@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Zap, Pencil, Trash2, ToggleLeft, ToggleRight, X, Instagram } from 'lucide-react'
+import { Plus, Zap, Pencil, Trash2, ToggleLeft, ToggleRight, X, Instagram, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { Flow } from '@/types'
@@ -169,30 +169,44 @@ function timeAgo(d: string) {
 export default function AutomatizacionPage() {
   const [flows, setFlows] = useState<Flow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('mis')
   const [tenantId, setTenantId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [modalTab, setModalTab] = useState<ModalTab>('whatsapp')
 
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setLoading(false); return }
+      if (!session) {
+        setLoading(false)
+        setLoadError('No hay sesión activa. Por favor inicia sesión.')
+        return
+      }
 
       const meRes = await fetch('/api/me', {
         headers: { authorization: `Bearer ${session.access_token}` },
       })
-      if (!meRes.ok) { setLoading(false); return }
+      if (!meRes.ok) {
+        setLoading(false)
+        setLoadError('Error al cargar tu cuenta. Intenta recargar la página.')
+        return
+      }
       const { tenant } = await meRes.json()
-      if (!tenant) { setLoading(false); return }
+      if (!tenant) {
+        setLoading(false)
+        setLoadError('No se encontró tu cuenta. Contacta a soporte si el problema persiste.')
+        return
+      }
 
       setTenantId(tenant.id)
 
       const res = await fetch(`/api/flows?tenant_id=${tenant.id}`)
       if (res.ok) {
         const { flows: data } = await res.json()
-        setFlows(data)
+        setFlows(data ?? [])
       }
       setLoading(false)
     }
@@ -218,8 +232,13 @@ export default function AutomatizacionPage() {
   }
 
   async function createFromTemplate(template?: Template) {
-    if (!tenantId || creating) return
+    if (creating) return
+    if (!tenantId) {
+      setCreateError('No se puede crear el flujo: cuenta no cargada. Recarga la página.')
+      return
+    }
     setCreating(true)
+    setCreateError(null)
     setShowModal(false)
 
     const steps = template?.id
@@ -239,8 +258,10 @@ export default function AutomatizacionPage() {
     if (res.ok) {
       const { flow } = await res.json()
       window.location.href = `/automatizacion/${flow.id}`
+    } else {
+      setCreateError('Error al crear el flujo. Intenta nuevamente.')
+      setCreating(false)
     }
-    setCreating(false)
   }
 
   const TABS: { id: Tab; label: string }[] = [
@@ -253,6 +274,25 @@ export default function AutomatizacionPage() {
 
   return (
     <div className="p-8">
+      {/* Load error */}
+      {loadError && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-5 text-sm">
+          <AlertCircle size={16} className="flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
+      {/* Create error */}
+      {createError && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-5 text-sm">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={16} className="flex-shrink-0" />
+            {createError}
+          </div>
+          <button onClick={() => setCreateError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0"><X size={14} /></button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
