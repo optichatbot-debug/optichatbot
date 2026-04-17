@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xbmdfbdehcxtsnecwbhi.supabase.co'
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhibWRmYmRlaGN4dHNuZWN3YmhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNzAwMTIsImV4cCI6MjA5MTk0NjAxMn0._uS3PPtXYTPUzYTUFxoGkHtuvK1gvg-p_5dYRP8RrPI'
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // Client para el browser (anon key)
