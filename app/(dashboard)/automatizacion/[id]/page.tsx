@@ -14,9 +14,9 @@ import {
 type TriggerTab = 'whatsapp' | 'instagram' | 'eventos'
 
 const WA_TRIGGERS = [
-  { label: 'Mensaje de WhatsApp',  desc: 'El usuario envía un mensaje por WhatsApp',         icon: '💬' },
-  { label: 'Clic en anuncio CTWA', desc: 'El usuario hace clic en un anuncio de WhatsApp',   icon: '📣' },
-  { label: 'URL de WhatsApp',      desc: 'El usuario llega por un enlace de WhatsApp',        icon: '🔗' },
+  { label: 'El usuario envía un mensaje',                    desc: 'Cuando alguien escribe al chat de WhatsApp',          icon: '💬' },
+  { label: 'Clic en anuncio CTWA',                           desc: 'El usuario hace clic en un anuncio de WhatsApp',      icon: '📣' },
+  { label: 'URL de WhatsApp - El usuario hace clic en un enlace', desc: 'Llega por un enlace de WhatsApp directo',       icon: '🔗' },
 ]
 const IG_TRIGGERS = [
   { label: 'Comentarios de publicaciones o reels', desc: 'El usuario comenta en tu publicación', icon: '💬' },
@@ -27,15 +27,14 @@ const IG_TRIGGERS = [
   { label: 'URL de referencia',                     desc: 'El usuario llega por un enlace de IG', icon: '🔗' },
 ]
 const EVENT_TRIGGERS = [
-  { label: 'Nueva suscripción',      desc: 'El contacto se suscribe al bot',           icon: '🔔' },
-  { label: 'Etiqueta aplicada',       desc: 'Se aplica una etiqueta al contacto',       icon: '🏷️' },
-  { label: 'Campo actualizado',       desc: 'Se actualiza un campo del contacto',       icon: '✏️' },
-  { label: 'Fecha específica',        desc: 'Trigger programado en una fecha',          icon: '📅' },
+  { label: 'Contacto suscrito',  desc: 'El contacto se suscribe al bot',         icon: '🔔' },
+  { label: 'Etiqueta añadida',   desc: 'Se añade una etiqueta al contacto',      icon: '🏷️' },
+  { label: 'Campo actualizado',  desc: 'Se actualiza un campo del contacto',     icon: '✏️' },
 ]
 
-// ─── Trigger picker modal ─────────────────────────────────────────────────────
+// ─── Trigger picker side panel ───────────────────────────────────────────────
 
-function TriggerPickerModal({ onSelect, onClose }: {
+function TriggerPickerPanel({ onSelect, onClose }: {
   onSelect: (label: string) => void
   onClose: () => void
 }) {
@@ -43,22 +42,23 @@ function TriggerPickerModal({ onSelect, onClose }: {
   const triggers = tab === 'whatsapp' ? WA_TRIGGERS : tab === 'instagram' ? IG_TRIGGERS : EVENT_TRIGGERS
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+    <>
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl border-l border-gray-100 flex flex-col z-50">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="font-bold text-gray-900">Elegir disparador</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
-        <div className="flex border-b border-gray-100 flex-shrink-0 px-2">
+        <div className="flex border-b border-gray-100 flex-shrink-0 px-1">
           {([
-            { id: 'whatsapp'  as TriggerTab, label: 'WhatsApp'           },
-            { id: 'instagram' as TriggerTab, label: 'Instagram'          },
-            { id: 'eventos'   as TriggerTab, label: 'Eventos de contacto'},
+            { id: 'whatsapp'  as TriggerTab, label: 'WhatsApp'  },
+            { id: 'instagram' as TriggerTab, label: 'Instagram' },
+            { id: 'eventos'   as TriggerTab, label: 'Eventos'   },
           ] as const).map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-3 text-xs font-semibold border-b-2 transition-all ${tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {t.label}
             </button>
@@ -71,16 +71,16 @@ function TriggerPickerModal({ onSelect, onClose }: {
               onClick={() => { onSelect(t.label); onClose() }}
               className="w-full flex items-center gap-3 p-3 border border-gray-100 rounded-xl hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left group"
             >
-              <span className="text-xl">{t.icon}</span>
+              <span className="text-xl leading-none">{t.icon}</span>
               <div>
-                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">{t.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 leading-snug">{t.label}</p>
+                <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{t.desc}</p>
               </div>
             </button>
           ))}
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -723,9 +723,9 @@ export default function FlowEditorPage() {
   return (
     <div className="flex flex-col h-screen bg-[#f4f5f7]">
 
-      {/* Trigger picker modal */}
+      {/* Trigger picker side panel */}
       {triggerPickerOpen && (
-        <TriggerPickerModal
+        <TriggerPickerPanel
           onSelect={label => {
             const triggerNode = nodes.find(n => n.type === 'trigger')
             if (triggerNode) updateNode({ ...triggerNode, trigger_label: label })

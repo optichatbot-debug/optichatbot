@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Plus, Trash2, Pencil, Upload, Download, X, ToggleLeft, ToggleRight,
-  ShoppingBag, Search, Image as ImageIcon, CheckCircle,
+  ShoppingBag, Search, Image as ImageIcon, CheckCircle, Video,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Product } from '@/types'
@@ -40,8 +40,10 @@ export default function ProductosPage() {
   const [fPrice, setFPrice] = useState('')
   const [fStock, setFStock] = useState('')
   const [fDisponible, setFDisponible] = useState(true)
-  const [fImage, setFImage] = useState('')
-  const [fVideo, setFVideo] = useState('')
+  const [fImageFile, setFImageFile] = useState<File | null>(null)
+  const [fImagePreview, setFImagePreview] = useState<string | null>(null)
+  const [fVideoFile, setFVideoFile] = useState<File | null>(null)
+  const [fVideoPreview, setFVideoPreview] = useState<string | null>(null)
   const [fCaracteristicas, setFCaracteristicas] = useState<string[]>([])
   const [fCarInput, setFCarInput] = useState('')
 
@@ -51,6 +53,8 @@ export default function ProductosPage() {
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const imageRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function load() {
@@ -73,14 +77,33 @@ export default function ProductosPage() {
 
   function resetForm() {
     setFName(''); setFCat('General'); setFDesc(''); setFCostPrice('');
-    setFPrice(''); setFStock(''); setFDisponible(true); setFImage('');
-    setFVideo(''); setFCaracteristicas([]); setFCarInput('')
+    setFPrice(''); setFStock(''); setFDisponible(true);
+    if (fImagePreview) URL.revokeObjectURL(fImagePreview)
+    if (fVideoPreview) URL.revokeObjectURL(fVideoPreview)
+    setFImageFile(null); setFImagePreview(null);
+    setFVideoFile(null); setFVideoPreview(null);
+    setFCaracteristicas([]); setFCarInput('')
+  }
+
+  async function uploadMedia(file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop() ?? 'bin'
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+    const { data, error } = await supabase.storage.from('products-media').upload(path, file, { upsert: true })
+    if (error || !data) return null
+    const { data: { publicUrl } } = supabase.storage.from('products-media').getPublicUrl(data.path)
+    return publicUrl
   }
 
   async function addProduct(e: React.FormEvent) {
     e.preventDefault()
     if (!tenantId || saving) return
     setSaving(true)
+
+    let imageUrl: string | null = null
+    let videoUrl: string | null = null
+    if (fImageFile) imageUrl = await uploadMedia(fImageFile)
+    if (fVideoFile) videoUrl = await uploadMedia(fVideoFile)
+
     const res = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -88,13 +111,13 @@ export default function ProductosPage() {
         tenant_id: tenantId,
         name: fName, category: fCat, description: fDesc,
         price: parseFloat(fPrice) || 0,
-        image_url: fImage || null, sku: null,
+        image_url: imageUrl, sku: null,
         active: fDisponible,
       }),
     })
     if (res.ok) {
       const { product } = await res.json()
-      setProducts(prev => [{ ...product, cost_price: parseFloat(fCostPrice) || undefined, stock: parseInt(fStock) || undefined, video_url: fVideo || undefined, caracteristicas: fCaracteristicas }, ...prev])
+      setProducts(prev => [{ ...product, cost_price: parseFloat(fCostPrice) || undefined, stock: parseInt(fStock) || undefined, video_url: videoUrl || undefined, caracteristicas: fCaracteristicas }, ...prev])
       setSavedMsg(true); setTimeout(() => setSavedMsg(false), 2000)
       resetForm(); setShowModal(false)
     }
@@ -367,12 +390,70 @@ export default function ProductosPage() {
                   <textarea value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2} placeholder="Descripción del producto…" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">URL Imagen</label>
-                  <input value={fImage} onChange={e => setFImage(e.target.value)} placeholder="https://…" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Imagen del producto</label>
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => imageRef.current?.click()}
+                      className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex-shrink-0"
+                    >
+                      <ImageIcon size={14} />
+                      {fImageFile ? 'Cambiar imagen' : 'Subir imagen'}
+                    </button>
+                    {fImagePreview && (
+                      <div className="relative flex-shrink-0">
+                        <img src={fImagePreview} alt="preview" className="w-14 h-14 rounded-lg object-cover border border-gray-100" />
+                        <button
+                          type="button"
+                          onClick={() => { if (fImagePreview) URL.revokeObjectURL(fImagePreview); setFImageFile(null); setFImagePreview(null) }}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center"
+                        >
+                          <X size={8} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">JPG, PNG o GIF</p>
+                  <input ref={imageRef} type="file" accept="image/jpeg,image/png,image/gif" className="hidden" onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    if (fImagePreview) URL.revokeObjectURL(fImagePreview)
+                    setFImageFile(f)
+                    setFImagePreview(URL.createObjectURL(f))
+                  }} />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">URL Video</label>
-                  <input value={fVideo} onChange={e => setFVideo(e.target.value)} placeholder="https://youtube.com/…" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Video del producto</label>
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => videoRef.current?.click()}
+                      className="inline-flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex-shrink-0"
+                    >
+                      <Video size={14} />
+                      {fVideoFile ? 'Cambiar video' : 'Subir video'}
+                    </button>
+                    {fVideoPreview && (
+                      <div className="relative flex-shrink-0">
+                        <video src={fVideoPreview} className="w-24 h-14 rounded-lg object-cover border border-gray-100" muted playsInline />
+                        <button
+                          type="button"
+                          onClick={() => { if (fVideoPreview) URL.revokeObjectURL(fVideoPreview); setFVideoFile(null); setFVideoPreview(null) }}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center"
+                        >
+                          <X size={8} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">MP4 o MOV</p>
+                  <input ref={videoRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    if (fVideoPreview) URL.revokeObjectURL(fVideoPreview)
+                    setFVideoFile(f)
+                    setFVideoPreview(URL.createObjectURL(f))
+                  }} />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Características</label>

@@ -222,7 +222,9 @@ export default function AutomatizacionPage() {
     setCreating(true)
     setShowModal(false)
 
-    const steps = template?.id ? buildNodes(TEMPLATE_STEPS[template.id] ?? []) : []
+    const steps = template?.id
+      ? buildNodes(TEMPLATE_STEPS[template.id] ?? [])
+      : buildNodes([{ type: 'trigger', trigger_label: '', x: 80, y: 200 }])
 
     const res = await fetch('/api/flows', {
       method: 'POST',
