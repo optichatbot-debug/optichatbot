@@ -13,14 +13,15 @@ import {
   UserCircle,
   ChevronDown,
   Wand2,
+  ShoppingBag,
 } from 'lucide-react'
-import { OjitoAvatar } from '@/components/chat/OjitoAvatar'
 
 const NAV = [
   { href: '/dashboard',      label: 'Inicio',             Icon: LayoutDashboard },
   { href: '/contactos',      label: 'Contactos',          Icon: Users           },
   { href: '/automatizacion', label: 'Automatización',     Icon: Zap             },
-  { href: '/ia',             label: 'IA OptiChatBot',     Icon: Bot             },
+  { href: '/productos',      label: 'Productos',          Icon: ShoppingBag     },
+  { href: '/ia',             label: 'Asistente IA',       Icon: Bot             },
   { href: '/bandeja',        label: 'Bandeja de entrada', Icon: MessageSquare   },
   { href: '/landing',        label: 'Landing IA',         Icon: Wand2           },
 ]
@@ -38,7 +39,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Logo / negocio */}
         <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/10">
-          <OjitoAvatar size={28} />
+          <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+            <Bot size={15} className="text-blue-400" />
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-bold text-[13px] leading-tight truncate">
               OptiChatBot

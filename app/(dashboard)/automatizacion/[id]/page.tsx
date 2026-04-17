@@ -6,12 +6,13 @@ import {
   ArrowLeft, Plus, Check, Eye, Loader2,
   MessageSquare, ImageIcon, MousePointerClick, List,
   Bot, GitBranch, Shuffle, Clock, Tag, Bell,
-  X, Trash2, ToggleLeft, ToggleRight, ChevronRight,
+  X, Trash2, ToggleLeft, ToggleRight, ChevronRight, Zap, Sparkles, Send,
 } from 'lucide-react'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type NodeType =
+  | 'trigger'
   | 'whatsapp_message' | 'image' | 'buttons' | 'list'
   | 'ai_step'
   | 'condition' | 'random' | 'smart_wait'
@@ -22,6 +23,8 @@ interface FlowNode {
   type: NodeType
   x: number
   y: number
+  // trigger
+  trigger_label?: string
   // whatsapp_message
   message?: string
   buttons?: string[]
@@ -51,22 +54,36 @@ interface Connection {
   port: 'default' | 'yes' | 'no'
 }
 
+interface StepPickerState {
+  fromId: string
+  port: 'default' | 'yes' | 'no'
+  x: number
+  y: number
+}
+
 // ─── Node meta ────────────────────────────────────────────────────────────────
 
 const META: Record<NodeType, { label: string; Icon: React.ElementType; bg: string; group: string }> = {
+  trigger:          { label: 'Cuando…',            Icon: Zap,               bg: '#2563EB', group: 'Trigger'   },
   whatsapp_message: { label: 'Mensaje WhatsApp',   Icon: MessageSquare,     bg: '#25D366', group: 'Contenido' },
   image:            { label: 'Imagen',             Icon: ImageIcon,         bg: '#3B82F6', group: 'Contenido' },
-  buttons:          { label: 'Botones',            Icon: MousePointerClick, bg: '#8B5CF6', group: 'Contenido' },
+  buttons:          { label: 'Botones de respuesta', Icon: MousePointerClick, bg: '#8B5CF6', group: 'Contenido' },
   list:             { label: 'Lista',              Icon: List,              bg: '#F59E0B', group: 'Contenido' },
   ai_step:          { label: 'Paso IA',            Icon: Bot,               bg: '#6366F1', group: 'IA'        },
   condition:        { label: 'Condición',          Icon: GitBranch,         bg: '#F97316', group: 'Lógica'    },
   random:           { label: 'Aleatorio',          Icon: Shuffle,           bg: '#EC4899', group: 'Lógica'    },
-  smart_wait:       { label: 'Espera inteligente', Icon: Clock,             bg: '#14B8A6', group: 'Lógica'    },
+  smart_wait:       { label: 'Espera',             Icon: Clock,             bg: '#14B8A6', group: 'Lógica'    },
   tag_contact:      { label: 'Etiquetar contacto', Icon: Tag,               bg: '#84CC16', group: 'Acciones'  },
   notify_team:      { label: 'Notificar equipo',   Icon: Bell,              bg: '#EF4444', group: 'Acciones'  },
 }
 
-const GROUPS = ['Contenido', 'IA', 'Lógica', 'Acciones']
+const PICKER_GROUPS: Array<{ label: string; types: NodeType[] }> = [
+  { label: 'Contenido', types: ['whatsapp_message', 'image', 'buttons'] },
+  { label: 'IA',        types: ['ai_step']                               },
+  { label: 'Lógica',    types: ['condition', 'smart_wait', 'random']     },
+  { label: 'Acciones',  types: ['tag_contact', 'notify_team']            },
+]
+
 const NODE_W = 220
 const NODE_H = 84
 
@@ -74,18 +91,66 @@ function uid() { return Math.random().toString(36).slice(2, 9) }
 
 function getPreview(n: FlowNode): string {
   switch (n.type) {
-    case 'whatsapp_message': return n.message || ''
-    case 'image':            return n.image_url ? '🖼 Imagen adjunta' : ''
-    case 'buttons':          return n.buttons?.join(' · ') || ''
-    case 'list':             return n.list_items?.join(', ') || ''
-    case 'ai_step':          return n.ai_instructions || ''
-    case 'condition':        return n.condition_text || ''
-    case 'random':           return 'Rama aleatoria'
-    case 'smart_wait':       return n.wait_hours ? `Espera ${n.wait_hours}h` : ''
-    case 'tag_contact':      return n.tag ? `#${n.tag}` : ''
-    case 'notify_team':      return n.notification_text || ''
-    default:                 return ''
+    case 'trigger':           return n.trigger_label || '+ Nuevo Disparador'
+    case 'whatsapp_message':  return n.message || ''
+    case 'image':             return n.image_url ? '🖼 Imagen adjunta' : ''
+    case 'buttons':           return n.buttons?.join(' · ') || ''
+    case 'list':              return n.list_items?.join(', ') || ''
+    case 'ai_step':           return n.ai_instructions || ''
+    case 'condition':         return n.condition_text || ''
+    case 'random':            return 'Rama aleatoria'
+    case 'smart_wait':        return n.wait_hours ? `Espera ${n.wait_hours}h` : ''
+    case 'tag_contact':       return n.tag ? `#${n.tag}` : ''
+    case 'notify_team':       return n.notification_text || ''
+    default:                  return ''
   }
+}
+
+// ─── Step Picker Panel ────────────────────────────────────────────────────────
+
+function StepPicker({
+  picker,
+  onPick,
+  onClose,
+}: {
+  picker: StepPickerState
+  onPick: (type: NodeType) => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      style={{ left: picker.x, top: Math.max(0, picker.y - 40), position: 'absolute', zIndex: 40 }}
+      className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-52 overflow-hidden"
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-50">
+        <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Agregar paso</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={13} /></button>
+      </div>
+      {PICKER_GROUPS.map(group => (
+        <div key={group.label}>
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest px-3 pt-2 pb-1">{group.label}</p>
+          {group.types.map(type => {
+            const m = META[type]
+            const Icon = m.Icon
+            return (
+              <button
+                key={type}
+                onClick={() => onPick(type)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: m.bg }}>
+                  <Icon size={11} className="text-white" />
+                </div>
+                <span className="text-xs text-gray-700 font-medium">{m.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // ─── NodeCard ─────────────────────────────────────────────────────────────────
@@ -93,58 +158,46 @@ function getPreview(n: FlowNode): string {
 function NodeCard({
   node,
   selected,
-  connecting,
   onSelect,
-  onStartConnect,
-  onConnectTo,
+  onOutputClick,
   onDragStart,
 }: {
   node: FlowNode
   selected: boolean
-  connecting: string | null
   onSelect: () => void
-  onStartConnect: (port: 'default' | 'yes' | 'no') => void
-  onConnectTo: () => void
+  onOutputClick: (port: 'default' | 'yes' | 'no') => void
   onDragStart: (e: React.MouseEvent) => void
 }) {
   const meta = META[node.type]
   const Icon = meta.Icon
   const prev = getPreview(node)
   const isCondition = node.type === 'condition'
+  const isTrigger = node.type === 'trigger'
 
   return (
     <div
       style={{ left: node.x, top: node.y, width: NODE_W, position: 'absolute' }}
       className={`select-none cursor-grab active:cursor-grabbing rounded-xl overflow-visible shadow-md transition-all ${
-        selected
-          ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200'
-          : 'hover:shadow-lg'
+        selected ? 'ring-2 ring-blue-500 ring-offset-1 shadow-blue-200' : 'hover:shadow-lg'
       }`}
       onMouseDown={e => { e.stopPropagation(); onDragStart(e); onSelect() }}
     >
-      {/* Input port */}
-      <button
-        onMouseDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onConnectTo() }}
-        className={`absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white z-10 transition-colors ${
-          connecting && connecting !== node.id
-            ? 'border-blue-500 bg-blue-100 cursor-pointer'
-            : 'border-gray-300'
-        }`}
-      />
+      {/* Input port — hide for trigger */}
+      {!isTrigger && (
+        <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white border-gray-300 z-10" />
+      )}
 
       {/* Header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2.5 rounded-t-xl"
-        style={{ backgroundColor: meta.bg }}
-      >
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-t-xl" style={{ backgroundColor: meta.bg }}>
         <Icon size={13} className="text-white flex-shrink-0" />
         <span className="text-white text-xs font-semibold truncate">{meta.label}</span>
       </div>
 
       {/* Body */}
       <div className="bg-white rounded-b-xl px-3 py-2.5 min-h-[44px]">
-        {prev ? (
+        {isTrigger ? (
+          <p className="text-xs text-blue-500 font-medium">+ Nuevo Disparador</p>
+        ) : prev ? (
           <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">{prev}</p>
         ) : (
           <p className="text-xs text-gray-300 italic">Sin contenido…</p>
@@ -155,17 +208,17 @@ function NodeCard({
       {isCondition ? (
         <>
           <button
-            onMouseDown={e => { e.stopPropagation(); onStartConnect('yes') }}
-            onClick={e => e.stopPropagation()}
-            title="Sí"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onOutputClick('yes') }}
+            title="Sí — agregar paso"
             className="absolute -right-3 top-[30%] -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white border-green-400 hover:bg-green-50 z-10 flex items-center justify-center"
           >
             <span className="text-[8px] font-bold text-green-500">Y</span>
           </button>
           <button
-            onMouseDown={e => { e.stopPropagation(); onStartConnect('no') }}
-            onClick={e => e.stopPropagation()}
-            title="No"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onOutputClick('no') }}
+            title="No — agregar paso"
             className="absolute -right-3 top-[65%] -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white border-red-400 hover:bg-red-50 z-10 flex items-center justify-center"
           >
             <span className="text-[8px] font-bold text-red-500">N</span>
@@ -173,15 +226,13 @@ function NodeCard({
         </>
       ) : (
         <button
-          onMouseDown={e => { e.stopPropagation(); onStartConnect('default') }}
-          onClick={e => e.stopPropagation()}
-          title="Conectar"
-          className={`absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white z-10 transition-colors ${
-            connecting === node.id
-              ? 'border-blue-500 bg-blue-500'
-              : 'border-gray-300 hover:border-blue-400'
-          }`}
-        />
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onOutputClick('default') }}
+          title="Agregar siguiente paso"
+          className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 bg-white border-blue-400 hover:bg-blue-100 z-10 transition-colors flex items-center justify-center"
+        >
+          <Plus size={9} className="text-blue-500" />
+        </button>
       )}
     </div>
   )
@@ -189,21 +240,15 @@ function NodeCard({
 
 // ─── Arrow ────────────────────────────────────────────────────────────────────
 
-function Arrow({
-  conn,
-  nodes,
-}: {
-  conn: Connection
-  nodes: FlowNode[]
-}) {
+function Arrow({ conn, nodes }: { conn: Connection; nodes: FlowNode[] }) {
   const from = nodes.find(n => n.id === conn.from)
   const to   = nodes.find(n => n.id === conn.to)
   if (!from || !to) return null
 
   let y1: number
-  if (conn.port === 'yes')      y1 = from.y + NODE_H * 0.30
-  else if (conn.port === 'no')  y1 = from.y + NODE_H * 0.65
-  else                          y1 = from.y + NODE_H / 2
+  if (conn.port === 'yes')     y1 = from.y + NODE_H * 0.30
+  else if (conn.port === 'no') y1 = from.y + NODE_H * 0.65
+  else                         y1 = from.y + NODE_H / 2
 
   const x1 = from.x + NODE_W
   const x2 = to.x
@@ -219,22 +264,17 @@ function Arrow({
     <g>
       <path
         d={`M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
+        fill="none" stroke={color} strokeWidth="2"
         markerEnd={`url(#arr-${conn.port})`}
       />
     </g>
   )
 }
 
-// ─── Left Sidebar (node editor) ───────────────────────────────────────────────
+// ─── Node Editor ──────────────────────────────────────────────────────────────
 
 function NodeEditor({
-  node,
-  onChange,
-  onDelete,
-  onClose,
+  node, onChange, onDelete, onClose,
 }: {
   node: FlowNode
   onChange: (updated: FlowNode) => void
@@ -253,294 +293,145 @@ function NodeEditor({
     onChange(updated)
   }
 
+  const isTrigger = node.type === 'trigger'
+
   return (
     <div className="w-72 bg-white border-r border-gray-100 flex flex-col flex-shrink-0 h-full overflow-y-auto">
-      {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100 flex-shrink-0">
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: meta.bg }}
-        >
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: meta.bg }}>
           <Icon size={14} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 truncate">{meta.label}</p>
           <p className="text-xs text-gray-400">Editor de paso</p>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-          <X size={16} />
-        </button>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={16} /></button>
       </div>
 
       <div className="flex-1 p-4 space-y-4">
+        {isTrigger && (
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tipo de disparador</label>
+            <select value={local.trigger_label ?? ''} onChange={e => commit({ trigger_label: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+              <option value="">Seleccionar disparador…</option>
+              <option>Palabra clave recibida</option>
+              <option>Primer mensaje del contacto</option>
+              <option>Botón presionado</option>
+              <option>Suscripción nueva</option>
+              <option>Evento personalizado</option>
+            </select>
+          </div>
+        )}
 
-        {/* Mensaje WhatsApp */}
         {local.type === 'whatsapp_message' && (
           <>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                Mensaje
-              </label>
-              <textarea
-                value={local.message ?? ''}
-                onChange={e => commit({ message: e.target.value })}
-                placeholder="Escribe el mensaje que enviará el bot…"
-                rows={5}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Usa {'{{nombre}}'} para insertar el nombre del contacto.
-              </p>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Mensaje</label>
+              <textarea value={local.message ?? ''} onChange={e => commit({ message: e.target.value })} placeholder="Escribe el mensaje…" rows={5} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
+              <p className="text-xs text-gray-400 mt-1">Usa {'{{nombre}}'} para el nombre del contacto.</p>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                Botones rápidos (opcional)
-              </label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Botones rápidos (opcional)</label>
               {(local.buttons ?? []).map((b, i) => (
                 <div key={i} className="flex gap-2 mb-2">
-                  <input
-                    value={b}
-                    onChange={e => {
-                      const arr = [...(local.buttons ?? [])]
-                      arr[i] = e.target.value
-                      commit({ buttons: arr })
-                    }}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    placeholder={`Botón ${i + 1}`}
-                  />
-                  <button
-                    onClick={() => {
-                      const arr = (local.buttons ?? []).filter((_, j) => j !== i)
-                      commit({ buttons: arr })
-                    }}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
+                  <input value={b} onChange={e => { const arr = [...(local.buttons ?? [])]; arr[i] = e.target.value; commit({ buttons: arr }) }} className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder={`Botón ${i + 1}`} />
+                  <button onClick={() => commit({ buttons: (local.buttons ?? []).filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
                 </div>
               ))}
               {(local.buttons ?? []).length < 3 && (
-                <button
-                  onClick={() => commit({ buttons: [...(local.buttons ?? []), ''] })}
-                  className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  <Plus size={12} /> Agregar botón
-                </button>
+                <button onClick={() => commit({ buttons: [...(local.buttons ?? []), ''] })} className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"><Plus size={12} /> Agregar botón</button>
               )}
             </div>
           </>
         )}
 
-        {/* Imagen */}
         {local.type === 'image' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              URL de la imagen
-            </label>
-            <input
-              value={local.image_url ?? ''}
-              onChange={e => commit({ image_url: e.target.value })}
-              placeholder="https://ejemplo.com/imagen.jpg"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-            {local.image_url && (
-              <img
-                src={local.image_url}
-                alt="preview"
-                className="mt-3 w-full rounded-lg object-cover max-h-32"
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-            )}
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">URL de imagen</label>
+            <input value={local.image_url ?? ''} onChange={e => commit({ image_url: e.target.value })} placeholder="https://…" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            {local.image_url && <img src={local.image_url} alt="" className="mt-2 w-full rounded-lg object-cover max-h-28" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />}
           </div>
         )}
 
-        {/* Botones */}
         {local.type === 'buttons' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Opciones de botón
-            </label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Opciones</label>
             {(local.buttons ?? ['']).map((b, i) => (
               <div key={i} className="flex gap-2 mb-2">
-                <input
-                  value={b}
-                  onChange={e => {
-                    const arr = [...(local.buttons ?? [''])]
-                    arr[i] = e.target.value
-                    commit({ buttons: arr })
-                  }}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder={`Opción ${i + 1}`}
-                />
-                <button
-                  onClick={() => {
-                    const arr = (local.buttons ?? []).filter((_, j) => j !== i)
-                    commit({ buttons: arr })
-                  }}
-                  className="text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                <input value={b} onChange={e => { const arr = [...(local.buttons ?? [''])]; arr[i] = e.target.value; commit({ buttons: arr }) }} className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder={`Opción ${i + 1}`} />
+                <button onClick={() => commit({ buttons: (local.buttons ?? []).filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
               </div>
             ))}
-            <button
-              onClick={() => commit({ buttons: [...(local.buttons ?? []), ''] })}
-              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
-            >
-              <Plus size={12} /> Agregar opción
-            </button>
+            <button onClick={() => commit({ buttons: [...(local.buttons ?? []), ''] })} className="flex items-center gap-1.5 text-xs text-blue-600 font-medium"><Plus size={12} /> Agregar opción</button>
           </div>
         )}
 
-        {/* Lista */}
         {local.type === 'list' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Ítems de la lista
-            </label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Ítems</label>
             {(local.list_items ?? ['']).map((item, i) => (
               <div key={i} className="flex gap-2 mb-2">
-                <input
-                  value={item}
-                  onChange={e => {
-                    const arr = [...(local.list_items ?? [''])]
-                    arr[i] = e.target.value
-                    commit({ list_items: arr })
-                  }}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder={`Ítem ${i + 1}`}
-                />
-                <button
-                  onClick={() => {
-                    const arr = (local.list_items ?? []).filter((_, j) => j !== i)
-                    commit({ list_items: arr })
-                  }}
-                  className="text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                <input value={item} onChange={e => { const arr = [...(local.list_items ?? [''])]; arr[i] = e.target.value; commit({ list_items: arr }) }} className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder={`Ítem ${i + 1}`} />
+                <button onClick={() => commit({ list_items: (local.list_items ?? []).filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
               </div>
             ))}
-            <button
-              onClick={() => commit({ list_items: [...(local.list_items ?? []), ''] })}
-              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
-            >
-              <Plus size={12} /> Agregar ítem
-            </button>
+            <button onClick={() => commit({ list_items: [...(local.list_items ?? []), ''] })} className="flex items-center gap-1.5 text-xs text-blue-600 font-medium"><Plus size={12} /> Agregar ítem</button>
           </div>
         )}
 
-        {/* Paso IA */}
         {local.type === 'ai_step' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Instrucciones para la IA
-            </label>
-            <textarea
-              value={local.ai_instructions ?? ''}
-              onChange={e => commit({ ai_instructions: e.target.value })}
-              placeholder="Ej: Responde al usuario sobre precios de lentes de contacto de forma amigable. Si pregunta por descuentos menciona el 10% para primera compra."
-              rows={6}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Claude procesará el mensaje del usuario con estas instrucciones.
-            </p>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Instrucciones para la IA</label>
+            <textarea value={local.ai_instructions ?? ''} onChange={e => commit({ ai_instructions: e.target.value })} placeholder="Ej: Responde sobre precios de forma amigable…" rows={6} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+            <p className="text-xs text-gray-400 mt-1">Claude procesará el mensaje con estas instrucciones.</p>
           </div>
         )}
 
-        {/* Condición */}
         {local.type === 'condition' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Condición
-            </label>
-            <textarea
-              value={local.condition_text ?? ''}
-              onChange={e => commit({ condition_text: e.target.value })}
-              placeholder="Ej: El mensaje contiene 'precio' o 'costo'"
-              rows={3}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
-            />
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Condición</label>
+            <textarea value={local.condition_text ?? ''} onChange={e => commit({ condition_text: e.target.value })} placeholder="Ej: El mensaje contiene 'precio'" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none" />
             <div className="mt-3 space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-4 h-4 rounded-full bg-green-500 flex-shrink-0" />
-                <span className="text-gray-600">Sí — conecta la rama verde</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0" />
-                <span className="text-gray-600">No — conecta la rama roja</span>
-              </div>
+              <div className="flex items-center gap-2 text-xs"><span className="w-3 h-3 rounded-full bg-green-500 flex-shrink-0" /><span className="text-gray-600">Sí → rama verde</span></div>
+              <div className="flex items-center gap-2 text-xs"><span className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0" /><span className="text-gray-600">No → rama roja</span></div>
             </div>
           </div>
         )}
 
-        {/* Aleatorio */}
         {local.type === 'random' && (
-          <div className="bg-pink-50 rounded-xl p-4 text-sm text-pink-700">
-            Este paso elige aleatoriamente uno de los nodos conectados a su salida.
-          </div>
+          <div className="bg-pink-50 rounded-xl p-3 text-sm text-pink-700">Elige aleatoriamente uno de los nodos conectados.</div>
         )}
 
-        {/* Espera inteligente */}
         {local.type === 'smart_wait' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Esperar (horas)
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={168}
-              value={local.wait_hours ?? 1}
-              onChange={e => commit({ wait_hours: Number(e.target.value) })}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-300"
-            />
-            <p className="text-xs text-gray-400 mt-1">El flujo esperará este tiempo antes de continuar.</p>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Esperar (horas)</label>
+            <input type="number" min={1} max={168} value={local.wait_hours ?? 1} onChange={e => commit({ wait_hours: Number(e.target.value) })} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-300" />
           </div>
         )}
 
-        {/* Etiquetar contacto */}
         {local.type === 'tag_contact' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Etiqueta
-            </label>
-            <input
-              value={local.tag ?? ''}
-              onChange={e => commit({ tag: e.target.value })}
-              placeholder="ej: cliente-potencial"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
-            />
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Etiqueta</label>
+            <input value={local.tag ?? ''} onChange={e => commit({ tag: e.target.value })} placeholder="ej: cliente-potencial" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
           </div>
         )}
 
-        {/* Notificar equipo */}
         {local.type === 'notify_team' && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Mensaje de notificación
-            </label>
-            <textarea
-              value={local.notification_text ?? ''}
-              onChange={e => commit({ notification_text: e.target.value })}
-              placeholder="Nuevo lead interesado en lentes progresivos"
-              rows={3}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
-            />
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Mensaje de notificación</label>
+            <textarea value={local.notification_text ?? ''} onChange={e => commit({ notification_text: e.target.value })} rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
           </div>
         )}
       </div>
 
-      {/* Delete */}
       <div className="px-4 py-3 border-t border-gray-100 flex-shrink-0">
-        <button
-          onClick={onDelete}
-          className="w-full flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 border border-red-200 py-2 rounded-xl text-sm font-medium transition-colors"
-        >
-          <Trash2 size={14} />
-          Eliminar paso
-        </button>
+        {isTrigger ? (
+          <p className="text-xs text-center text-gray-400">El disparador es el inicio del flujo</p>
+        ) : (
+          <button onClick={onDelete} className="w-full flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 border border-red-200 py-2 rounded-xl text-sm font-medium transition-colors">
+            <Trash2 size={14} />Eliminar paso
+          </button>
+        )}
       </div>
     </div>
   )
@@ -552,17 +443,18 @@ export default function FlowEditorPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
-  const [flowName, setFlowName]     = useState('Nuevo flujo')
-  const [keywords, setKeywords]     = useState('')
-  const [isLive, setIsLive]         = useState(false)
-  const [nodes, setNodes]           = useState<FlowNode[]>([])
-  const [conns, setConns]           = useState<Connection[]>([])
-  const [selected, setSelected]     = useState<string | null>(null)
-  const [connecting, setConnecting] = useState<{ from: string; port: 'default' | 'yes' | 'no' } | null>(null)
-  const [dragging, setDragging]     = useState<{ id: string; ox: number; oy: number } | null>(null)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [showAddMenu, setShowAddMenu] = useState(false)
-  const [loading, setLoading]       = useState(true)
+  const [flowName, setFlowName]         = useState('Nuevo flujo')
+  const [keywords, setKeywords]         = useState('')
+  const [isLive, setIsLive]             = useState(false)
+  const [nodes, setNodes]               = useState<FlowNode[]>([])
+  const [conns, setConns]               = useState<Connection[]>([])
+  const [selected, setSelected]         = useState<string | null>(null)
+  const [stepPicker, setStepPicker]     = useState<StepPickerState | null>(null)
+  const [dragging, setDragging]         = useState<{ id: string; ox: number; oy: number } | null>(null)
+  const [saveStatus, setSaveStatus]     = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [loading, setLoading]           = useState(true)
+  const [aiPrompt, setAiPrompt]         = useState('')
+  const [aiGenerating, setAiGenerating] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -580,23 +472,29 @@ export default function FlowEditorPage() {
           const steps: FlowNode[] = (flow.steps ?? []).map((s: FlowNode, i: number) => ({
             ...s,
             x: s.x ?? 100 + i * 280,
-            y: s.y ?? 120,
+            y: s.y ?? 200,
           }))
+          // Ensure trigger node exists
+          if (!steps.find(s => s.type === 'trigger')) {
+            steps.unshift({ id: uid(), type: 'trigger', x: 80, y: 200 })
+          }
           setNodes(steps)
-          // rebuild connections
           const rebuilt: Connection[] = []
           for (const s of steps) {
             if (s.next_id) rebuilt.push({ from: s.id, to: s.next_id, port: 'default' })
-            if (s.yes_id)  rebuilt.push({ from: s.id, to: s.yes_id,  port: 'yes'     })
-            if (s.no_id)   rebuilt.push({ from: s.id, to: s.no_id,   port: 'no'      })
+            if (s.yes_id)  rebuilt.push({ from: s.id, to: s.yes_id,  port: 'yes' })
+            if (s.no_id)   rebuilt.push({ from: s.id, to: s.no_id,   port: 'no' })
           }
           setConns(rebuilt)
+        } else {
+          // New empty flow — create trigger node
+          setNodes([{ id: uid(), type: 'trigger', x: 80, y: 200 }])
         }
         setLoading(false)
       })
   }, [id])
 
-  // ── Auto-save (debounced 1.2s) ──
+  // ── Auto-save (2s debounce) ──
   const schedSave = useCallback((
     n: FlowNode[], c: Connection[], name: string, kw: string, live: boolean
   ) => {
@@ -611,7 +509,7 @@ export default function FlowEditorPage() {
       })
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
-    }, 1200)
+    }, 2000)
   }, [id])
 
   function mutateNodes(fn: (prev: FlowNode[]) => FlowNode[], newConns?: Connection[]) {
@@ -651,39 +549,43 @@ export default function FlowEditorPage() {
     }
   }, [handleMouseMove, handleMouseUp])
 
-  // ── Add node ──
-  function addNode(type: NodeType) {
+  // ── Output dot click → show step picker ──
+  function handleOutputClick(nodeId: string, port: 'default' | 'yes' | 'no') {
+    const node = nodes.find(n => n.id === nodeId)
+    if (!node) return
+    const pickerX = node.x + NODE_W + 28
+    const pickerY = port === 'yes' ? node.y - 40 :
+                    port === 'no'  ? node.y + NODE_H * 0.65 :
+                    node.y + NODE_H / 2 - 80
+    setStepPicker({ fromId: nodeId, port, x: pickerX, y: pickerY })
+    setSelected(null)
+  }
+
+  // ── Pick step from picker → create + connect ──
+  function pickStep(type: NodeType) {
+    if (!stepPicker) return
+    const fromNode = nodes.find(n => n.id === stepPicker.fromId)
+    if (!fromNode) return
+
     const newNode: FlowNode = {
       id: uid(), type,
-      x: 80 + (nodes.length % 4) * 260,
-      y: 80 + Math.floor(nodes.length / 4) * 160,
+      x: fromNode.x + NODE_W + 100,
+      y: stepPicker.port === 'yes' ? fromNode.y - 60 :
+         stepPicker.port === 'no'  ? fromNode.y + NODE_H + 40 :
+         fromNode.y,
     }
-    mutateNodes(prev => [...prev, newNode])
-    setSelected(newNode.id)
-    setShowAddMenu(false)
-  }
 
-  // ── Connect ──
-  function startConnect(fromId: string, port: 'default' | 'yes' | 'no') {
-    setConnecting({ from: fromId, port })
-  }
+    const ptrKey = stepPicker.port === 'default' ? 'next_id' :
+                   stepPicker.port === 'yes'      ? 'yes_id' : 'no_id'
 
-  function connectTo(toId: string) {
-    if (!connecting || connecting.from === toId) { setConnecting(null); return }
-    // Remove old connection from same source+port
-    const filtered = conns.filter(
-      c => !(c.from === connecting.from && c.port === connecting.port)
-    )
-    const newConns = [...filtered, { from: connecting.from, to: toId, port: connecting.port }]
-    setConns(newConns)
-    // Update node's pointer field
-    const ptrKey = connecting.port === 'default' ? 'next_id' :
-                   connecting.port === 'yes' ? 'yes_id' : 'no_id'
+    const newConns = [...conns, { from: stepPicker.fromId, to: newNode.id, port: stepPicker.port }]
+
     mutateNodes(
-      prev => prev.map(n => n.id === connecting.from ? { ...n, [ptrKey]: toId } : n),
+      prev => [...prev.map(n => n.id === stepPicker.fromId ? { ...n, [ptrKey]: newNode.id } : n), newNode],
       newConns
     )
-    setConnecting(null)
+    setSelected(newNode.id)
+    setStepPicker(null)
   }
 
   // ── Delete node ──
@@ -693,33 +595,50 @@ export default function FlowEditorPage() {
     if (selected === nodeId) setSelected(null)
   }
 
-  // ── Update node from editor ──
   function updateNode(updated: FlowNode) {
     mutateNodes(prev => prev.map(n => n.id === updated.id ? updated : n))
   }
 
-  const selectedNode = nodes.find(n => n.id === selected) ?? null
+  async function publish() {
+    if (!isLive) {
+      const next = true
+      setIsLive(next)
+      schedSave(nodes, conns, flowName, keywords, next)
+    }
+  }
 
-  const canvasW = Math.max(900, ...nodes.map(n => n.x + NODE_W + 120))
-  const canvasH = Math.max(600, ...nodes.map(n => n.y + NODE_H + 120))
+  async function generateWithAI() {
+    if (!aiPrompt.trim() || aiGenerating) return
+    setAiGenerating(true)
+    // Placeholder: in a real implementation, call an AI endpoint to generate nodes
+    await new Promise(r => setTimeout(r, 800))
+    setAiGenerating(false)
+    setAiPrompt('')
+  }
+
+  const selectedNode = nodes.find(n => n.id === selected) ?? null
+  const canvasW = Math.max(900, ...nodes.map(n => n.x + NODE_W + 180))
+  const canvasH = Math.max(600, ...nodes.map(n => n.y + NODE_H + 180))
 
   return (
     <div className="flex flex-col h-screen bg-[#f4f5f7]">
 
       {/* ── Top bar ── */}
-      <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-4 flex-shrink-0 z-20">
-        <button
-          onClick={() => router.push('/automatizacion')}
-          className="text-gray-400 hover:text-gray-700 transition-colors"
-        >
+      <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 z-20">
+        <button onClick={() => router.push('/automatizacion')} className="text-gray-400 hover:text-gray-700 transition-colors">
           <ArrowLeft size={18} />
         </button>
 
-        <input
-          value={flowName}
-          onChange={e => { setFlowName(e.target.value); schedSave(nodes, conns, e.target.value, keywords, isLive) }}
-          className="font-bold text-gray-900 text-sm bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none px-1 py-0.5 transition-colors min-w-[120px]"
-        />
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-sm">
+          <button onClick={() => router.push('/automatizacion')} className="text-gray-400 hover:text-gray-600 transition-colors">Automatizaciones</button>
+          <span className="text-gray-300">/</span>
+          <input
+            value={flowName}
+            onChange={e => { setFlowName(e.target.value); schedSave(nodes, conns, e.target.value, keywords, isLive) }}
+            className="font-semibold text-gray-900 bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none px-1 py-0.5 transition-colors min-w-[100px]"
+          />
+        </div>
 
         {/* Keywords */}
         <div className="hidden md:flex items-center gap-2">
@@ -727,8 +646,8 @@ export default function FlowEditorPage() {
           <input
             value={keywords}
             onChange={e => { setKeywords(e.target.value); schedSave(nodes, conns, flowName, e.target.value, isLive) }}
-            placeholder="precio, citas, lentes…"
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            placeholder="precio, citas…"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-36 focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
         </div>
 
@@ -740,31 +659,32 @@ export default function FlowEditorPage() {
           saveStatus === 'saved'  ? 'text-green-500' :
           'text-transparent'
         }`}>
-          {saveStatus === 'saving' ? 'Guardando…' :
-           saveStatus === 'saved'  ? '✓ Guardado' : '·'}
+          {saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? '✓ Guardado' : '·'}
         </span>
 
         {/* Preview */}
         <button className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-gray-50">
-          <Eye size={13} />
-          Vista previa
+          <Eye size={13} />Vista previa
         </button>
 
-        {/* Set Live toggle */}
+        {/* Disabled/Enabled toggle */}
         <button
-          onClick={() => {
-            const next = !isLive
-            setIsLive(next)
-            schedSave(nodes, conns, flowName, keywords, next)
-          }}
+          onClick={() => { const next = !isLive; setIsLive(next); schedSave(nodes, conns, flowName, keywords, next) }}
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-            isLive
-              ? 'bg-green-500 border-green-600 text-white'
-              : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+            isLive ? 'bg-white border-green-300 text-green-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
           }`}
         >
-          {isLive ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
-          {isLive ? 'Activo' : 'Set Live'}
+          {isLive ? <ToggleRight size={15} className="text-green-500" /> : <ToggleLeft size={15} />}
+          {isLive ? 'Habilitado' : 'Deshabilitado'}
+        </button>
+
+        {/* Publicar */}
+        <button
+          onClick={publish}
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+        >
+          <Check size={13} />
+          Publicar
         </button>
       </div>
 
@@ -790,39 +710,20 @@ export default function FlowEditorPage() {
             backgroundImage: 'radial-gradient(circle, #d1d5db 1px, transparent 1px)',
             backgroundSize: '24px 24px',
           }}
-          onClick={() => { setSelected(null); setConnecting(null); setShowAddMenu(false) }}
+          onClick={() => { setSelected(null); setStepPicker(null) }}
         >
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 size={28} className="animate-spin text-blue-400" />
             </div>
-          ) : nodes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 select-none">
-              <div className="w-16 h-16 rounded-2xl bg-white/80 shadow flex items-center justify-center mb-3">
-                <Plus size={28} className="text-gray-300" />
-              </div>
-              <p className="text-sm font-medium text-gray-500">Canvas vacío</p>
-              <p className="text-xs mt-1 text-gray-400">Haz clic en + para agregar el primer paso</p>
-            </div>
           ) : (
             <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
-              {/* SVG layer */}
-              <svg
-                style={{ position: 'absolute', inset: 0, width: canvasW, height: canvasH, pointerEvents: 'none' }}
-              >
+              {/* SVG arrows */}
+              <svg style={{ position: 'absolute', inset: 0, width: canvasW, height: canvasH, pointerEvents: 'none' }}>
                 <defs>
                   {(['default', 'yes', 'no'] as const).map(port => (
-                    <marker
-                      key={port}
-                      id={`arr-${port}`}
-                      markerWidth="8" markerHeight="8"
-                      refX="6" refY="3"
-                      orient="auto"
-                    >
-                      <path
-                        d="M0,0 L0,6 L8,3 z"
-                        fill={port === 'yes' ? '#22C55E' : port === 'no' ? '#EF4444' : '#93C5FD'}
-                      />
+                    <marker key={port} id={`arr-${port}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                      <path d="M0,0 L0,6 L8,3 z" fill={port === 'yes' ? '#22C55E' : port === 'no' ? '#EF4444' : '#93C5FD'} />
                     </marker>
                   ))}
                 </defs>
@@ -837,10 +738,8 @@ export default function FlowEditorPage() {
                   key={node.id}
                   node={node}
                   selected={selected === node.id}
-                  connecting={connecting?.from ?? null}
-                  onSelect={() => setSelected(node.id)}
-                  onStartConnect={port => startConnect(node.id, port)}
-                  onConnectTo={() => connectTo(node.id)}
+                  onSelect={() => { setSelected(node.id); setStepPicker(null) }}
+                  onOutputClick={port => handleOutputClick(node.id, port)}
                   onDragStart={e => {
                     if (!canvasRef.current) return
                     const rect = canvasRef.current.getBoundingClientRect()
@@ -852,58 +751,35 @@ export default function FlowEditorPage() {
                   }}
                 />
               ))}
+
+              {/* Step picker panel */}
+              {stepPicker && (
+                <StepPicker
+                  picker={stepPicker}
+                  onPick={pickStep}
+                  onClose={() => setStepPicker(null)}
+                />
+              )}
             </div>
           )}
 
-          {/* Floating + button */}
-          <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2 z-30">
-            {showAddMenu && (
-              <div
-                className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden w-56"
-                onClick={e => e.stopPropagation()}
-              >
-                {GROUPS.map(group => {
-                  const types = (Object.entries(META) as [NodeType, typeof META[NodeType]][])
-                    .filter(([, m]) => m.group === group)
-                  return (
-                    <div key={group}>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-4 pt-3 pb-1">
-                        {group}
-                      </p>
-                      {types.map(([type, m]) => {
-                        const Icon = m.Icon
-                        return (
-                          <button
-                            key={type}
-                            onClick={() => addNode(type)}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
-                          >
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{ backgroundColor: m.bg }}
-                            >
-                              <Icon size={13} className="text-white" />
-                            </div>
-                            <span className="text-sm text-gray-700 font-medium">{m.label}</span>
-                            <ChevronRight size={12} className="text-gray-300 ml-auto" />
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
+          {/* ── Bottom AI bar ── */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-white rounded-2xl shadow-xl border border-gray-100 px-4 py-2.5 w-[500px] max-w-[calc(100vw-80px)]">
+            <Sparkles size={16} className="text-indigo-500 flex-shrink-0" />
+            <input
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateWithAI()}
+              placeholder="✨ Crear con IA — describe el flujo que quieres construir…"
+              className="flex-1 text-sm bg-transparent focus:outline-none text-gray-700 placeholder-gray-400"
+            />
             <button
-              onClick={e => { e.stopPropagation(); setShowAddMenu(v => !v) }}
-              className={`w-12 h-12 rounded-full shadow-xl flex items-center justify-center transition-all ${
-                showAddMenu
-                  ? 'bg-gray-700 rotate-45'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
+              onClick={generateWithAI}
+              disabled={!aiPrompt.trim() || aiGenerating}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
             >
-              <Plus size={22} className="text-white" />
+              {aiGenerating ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              {aiGenerating ? 'Creando…' : 'Crear'}
             </button>
           </div>
         </div>
