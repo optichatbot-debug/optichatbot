@@ -1,21 +1,24 @@
 import { ChatWidget } from '@/components/chat/ChatWidget'
 import { getTenantByToken } from '@/lib/supabase'
 
-interface Props {
-  params: { token: string }
-  searchParams: { tone?: string }
-}
-
-export default async function WidgetPage({ params, searchParams }: Props) {
-  const tenant = await getTenantByToken(params.token)
+export default async function WidgetPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>
+  searchParams: Promise<{ tone?: string }>
+}) {
+  const resolvedParams = await params
+  const resolvedSearch = await searchParams
+  const tenant = await getTenantByToken(resolvedParams.token)
 
   if (!tenant) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <p className="text-gray-500 text-sm">Widget no encontrado</p>
-        </div>
-      </div>
+      <html>
+        <body>
+          <p style={{ color: '#9ca3af', fontSize: '14px' }}>Widget no encontrado</p>
+        </body>
+      </html>
     )
   }
 
@@ -23,11 +26,11 @@ export default async function WidgetPage({ params, searchParams }: Props) {
     <html>
       <body className="bg-transparent">
         <ChatWidget
-          tenantToken={params.token}
+          tenantToken={resolvedParams.token}
           avatarName={tenant.avatar_name || 'Ojito'}
           businessName={tenant.name}
           primaryColor={tenant.config?.primary_color || '#2563EB'}
-          tone={(searchParams.tone as any) || tenant.tone || 'amigable'}
+          tone={(resolvedSearch.tone as any) || tenant.tone || 'amigable'}
           apiUrl={`${process.env.NEXT_PUBLIC_APP_URL}/api/chat`}
         />
       </body>
