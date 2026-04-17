@@ -76,6 +76,88 @@ const IG_TEMPLATES: Template[] = [
   },
 ]
 
+// ─── Pre-built template steps ─────────────────────────────────────────────────
+
+function uid() { return Math.random().toString(36).slice(2, 9) }
+
+type TNodeType = 'trigger' | 'whatsapp_message' | 'ai_step' | 'buttons' | 'condition' | 'smart_wait' | 'tag_contact' | 'notify_team'
+
+interface TNode {
+  id?: string
+  type: TNodeType
+  x: number
+  y: number
+  trigger_label?: string
+  message?: string
+  buttons?: string[]
+  ai_instructions?: string
+  condition_text?: string
+  tag?: string
+  next_id?: string
+}
+
+function buildNodes(defs: Omit<TNode, 'id'>[]): TNode[] {
+  const nodes: TNode[] = defs.map(d => ({ ...d, id: uid() }))
+  for (let i = 0; i < nodes.length - 1; i++) {
+    if (nodes[i].type !== 'condition') nodes[i].next_id = nodes[i + 1].id
+  }
+  return nodes
+}
+
+const TEMPLATE_STEPS: Record<string, Omit<TNode, 'id'>[]> = {
+  'ai-conv': [
+    { type: 'trigger', trigger_label: 'El usuario envía un mensaje', x: 80, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Responde automáticamente la consulta del usuario con información del negocio. Sé amigable y conciso. Si no tienes la respuesta, ofrece contactar al equipo.', x: 380, y: 200 },
+  ],
+  'agenda': [
+    { type: 'trigger', trigger_label: 'El usuario quiere agendar una cita', x: 80, y: 200 },
+    { type: 'whatsapp_message', message: '¡Hola! Con gusto te ayudo a agendar tu cita 📅 ¿Cuál es tu nombre completo?', x: 380, y: 200 },
+    { type: 'whatsapp_message', message: 'Perfecto. ¿Qué fecha prefieres para tu cita? (atendemos Lun–Vie 9am–7pm)', x: 680, y: 200 },
+    { type: 'whatsapp_message', message: '¿A qué hora te queda mejor?', x: 980, y: 200 },
+    { type: 'whatsapp_message', message: '✅ ¡Tu cita está agendada! Te enviaremos confirmación y recordatorio 24h antes.', x: 1280, y: 200 },
+    { type: 'tag_contact', tag: 'cita-agendada', x: 1580, y: 200 },
+  ],
+  'reservas': [
+    { type: 'trigger', trigger_label: 'El usuario quiere hacer una reserva', x: 80, y: 200 },
+    { type: 'whatsapp_message', message: '¡Hola! Vamos a reservar tu cita. ¿Cuál es tu nombre completo?', x: 380, y: 200 },
+    { type: 'whatsapp_message', message: '¿Qué tipo de consulta necesitas? Examen visual, adaptación de lentes, control u otro.', x: 680, y: 200 },
+    { type: 'whatsapp_message', message: '¿Qué fecha te viene mejor?', x: 980, y: 200 },
+    { type: 'whatsapp_message', message: '¿Prefieres turno de mañana (9am–1pm) o tarde (2pm–7pm)?', x: 1280, y: 200 },
+    { type: 'whatsapp_message', message: '✅ ¡Reserva confirmada! Hasta pronto y cuídate mucho.', x: 1580, y: 200 },
+  ],
+  'respuestas-ia': [
+    { type: 'trigger', trigger_label: 'El usuario hace una pregunta', x: 80, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Responde la pregunta con información detallada sobre productos, precios y servicios. Ofrece recomendaciones personalizadas y guía hacia la compra.', x: 380, y: 200 },
+  ],
+  'redirigir': [
+    { type: 'trigger', trigger_label: 'El usuario pregunta por la tienda o catálogo', x: 80, y: 200 },
+    { type: 'whatsapp_message', message: '¡Hola! Puedes ver todo nuestro catálogo y hacer tu pedido directo desde nuestra tienda 🛍️ ¿Buscas algo en especial?', x: 380, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Si el usuario pregunta por un producto específico, describe sus características y precio, y redirige a la tienda para completar el pedido.', x: 680, y: 200 },
+  ],
+  'cuestionario': [
+    { type: 'trigger', trigger_label: 'El usuario inicia contacto', x: 80, y: 200 },
+    { type: 'whatsapp_message', message: '¡Bienvenido/a! 👋 Para ayudarte mejor, ¿qué estás buscando hoy?', x: 380, y: 200 },
+    { type: 'buttons', buttons: ['Lentes de sol', 'Lentes ópticos', 'Deportivos', 'Consulta visual'], x: 680, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Basándote en la selección del cliente, recomienda productos del catálogo con precios y características. Ofrece ayuda para finalizar la compra.', x: 980, y: 200 },
+    { type: 'tag_contact', tag: 'lead-calificado', x: 1280, y: 200 },
+  ],
+  'ig-dm': [
+    { type: 'trigger', trigger_label: 'Mensaje de Instagram recibido', x: 80, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Responde el DM de Instagram automáticamente. Sé amigable, responde preguntas sobre productos y servicios y ofrece asistencia personalizada.', x: 380, y: 200 },
+  ],
+  'ig-leads': [
+    { type: 'trigger', trigger_label: 'Comentario en publicación de Instagram', x: 80, y: 200 },
+    { type: 'whatsapp_message', message: '¡Hola! Vi tu interés en nuestra publicación 😊 ¿Te gustaría recibir más información sobre este producto?', x: 380, y: 200 },
+    { type: 'whatsapp_message', message: '¿Cuál es tu nombre? Así personalizamos mejor la atención.', x: 680, y: 200 },
+    { type: 'tag_contact', tag: 'lead-instagram', x: 980, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Responde las consultas del lead con información del catálogo y guíalo hacia la compra. Sé proactivo ofreciendo opciones y precios.', x: 1280, y: 200 },
+  ],
+  'ig-comments': [
+    { type: 'trigger', trigger_label: 'Comentario en publicación', x: 80, y: 200 },
+    { type: 'ai_step', ai_instructions: 'Responde el comentario de Instagram de forma personalizada y amigable. Menciona los beneficios del producto y ofrece más información o dirígelos al DM.', x: 380, y: 200 },
+  ],
+}
+
 function timeAgo(d: string) {
   const diff = Date.now() - new Date(d).getTime()
   const days = Math.floor(diff / 86_400_000)
@@ -140,6 +222,8 @@ export default function AutomatizacionPage() {
     setCreating(true)
     setShowModal(false)
 
+    const steps = template?.id ? buildNodes(TEMPLATE_STEPS[template.id] ?? []) : []
+
     const res = await fetch('/api/flows', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,6 +231,7 @@ export default function AutomatizacionPage() {
         tenant_id: tenantId,
         name: template?.title ?? 'Nuevo flujo',
         trigger_keywords: template?.keywords ?? [],
+        steps,
       }),
     })
     if (res.ok) {

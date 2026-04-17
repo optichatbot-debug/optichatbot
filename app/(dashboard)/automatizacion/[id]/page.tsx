@@ -9,6 +9,81 @@ import {
   X, Trash2, ToggleLeft, ToggleRight, ChevronRight, Zap, Sparkles, Send,
 } from 'lucide-react'
 
+// ─── Trigger picker data ──────────────────────────────────────────────────────
+
+type TriggerTab = 'whatsapp' | 'instagram' | 'eventos'
+
+const WA_TRIGGERS = [
+  { label: 'Mensaje de WhatsApp',  desc: 'El usuario envía un mensaje por WhatsApp',         icon: '💬' },
+  { label: 'Clic en anuncio CTWA', desc: 'El usuario hace clic en un anuncio de WhatsApp',   icon: '📣' },
+  { label: 'URL de WhatsApp',      desc: 'El usuario llega por un enlace de WhatsApp',        icon: '🔗' },
+]
+const IG_TRIGGERS = [
+  { label: 'Comentarios de publicaciones o reels', desc: 'El usuario comenta en tu publicación', icon: '💬' },
+  { label: 'Respuesta a las historias',             desc: 'El usuario responde a tu historia',   icon: '📖' },
+  { label: 'Mensaje de Instagram',                  desc: 'El usuario envía un DM de Instagram', icon: '✉️' },
+  { label: 'Anuncios de Instagram',                 desc: 'Interacción con un anuncio',           icon: '📣' },
+  { label: 'Comentarios en vivo',                   desc: 'El usuario comenta en un live',        icon: '🔴' },
+  { label: 'URL de referencia',                     desc: 'El usuario llega por un enlace de IG', icon: '🔗' },
+]
+const EVENT_TRIGGERS = [
+  { label: 'Nueva suscripción',      desc: 'El contacto se suscribe al bot',           icon: '🔔' },
+  { label: 'Etiqueta aplicada',       desc: 'Se aplica una etiqueta al contacto',       icon: '🏷️' },
+  { label: 'Campo actualizado',       desc: 'Se actualiza un campo del contacto',       icon: '✏️' },
+  { label: 'Fecha específica',        desc: 'Trigger programado en una fecha',          icon: '📅' },
+]
+
+// ─── Trigger picker modal ─────────────────────────────────────────────────────
+
+function TriggerPickerModal({ onSelect, onClose }: {
+  onSelect: (label: string) => void
+  onClose: () => void
+}) {
+  const [tab, setTab] = useState<TriggerTab>('whatsapp')
+  const triggers = tab === 'whatsapp' ? WA_TRIGGERS : tab === 'instagram' ? IG_TRIGGERS : EVENT_TRIGGERS
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <h2 className="font-bold text-gray-900">Elegir disparador</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+        <div className="flex border-b border-gray-100 flex-shrink-0 px-2">
+          {([
+            { id: 'whatsapp'  as TriggerTab, label: 'WhatsApp'           },
+            { id: 'instagram' as TriggerTab, label: 'Instagram'          },
+            { id: 'eventos'   as TriggerTab, label: 'Eventos de contacto'},
+          ] as const).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-all ${tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {triggers.map(t => (
+            <button
+              key={t.label}
+              onClick={() => { onSelect(t.label); onClose() }}
+              className="w-full flex items-center gap-3 p-3 border border-gray-100 rounded-xl hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left group"
+            >
+              <span className="text-xl">{t.icon}</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">{t.label}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type NodeType =
@@ -161,12 +236,14 @@ function NodeCard({
   onSelect,
   onOutputClick,
   onDragStart,
+  onTriggerClick,
 }: {
   node: FlowNode
   selected: boolean
   onSelect: () => void
   onOutputClick: (port: 'default' | 'yes' | 'no') => void
   onDragStart: (e: React.MouseEvent) => void
+  onTriggerClick?: () => void
 }) {
   const meta = META[node.type]
   const Icon = meta.Icon
@@ -196,7 +273,14 @@ function NodeCard({
       {/* Body */}
       <div className="bg-white rounded-b-xl px-3 py-2.5 min-h-[44px]">
         {isTrigger ? (
-          <p className="text-xs text-blue-500 font-medium">+ Nuevo Disparador</p>
+          <button
+            type="button"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onTriggerClick?.() }}
+            className="text-xs text-blue-500 font-medium hover:text-blue-700 transition-colors text-left w-full"
+          >
+            {node.trigger_label || '+ Nuevo Disparador'}
+          </button>
         ) : prev ? (
           <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">{prev}</p>
         ) : (
@@ -449,12 +533,13 @@ export default function FlowEditorPage() {
   const [nodes, setNodes]               = useState<FlowNode[]>([])
   const [conns, setConns]               = useState<Connection[]>([])
   const [selected, setSelected]         = useState<string | null>(null)
-  const [stepPicker, setStepPicker]     = useState<StepPickerState | null>(null)
-  const [dragging, setDragging]         = useState<{ id: string; ox: number; oy: number } | null>(null)
-  const [saveStatus, setSaveStatus]     = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [loading, setLoading]           = useState(true)
-  const [aiPrompt, setAiPrompt]         = useState('')
-  const [aiGenerating, setAiGenerating] = useState(false)
+  const [stepPicker, setStepPicker]         = useState<StepPickerState | null>(null)
+  const [triggerPickerOpen, setTriggerPickerOpen] = useState(false)
+  const [dragging, setDragging]             = useState<{ id: string; ox: number; oy: number } | null>(null)
+  const [saveStatus, setSaveStatus]         = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [loading, setLoading]               = useState(true)
+  const [aiPrompt, setAiPrompt]             = useState('')
+  const [aiGenerating, setAiGenerating]     = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -610,8 +695,23 @@ export default function FlowEditorPage() {
   async function generateWithAI() {
     if (!aiPrompt.trim() || aiGenerating) return
     setAiGenerating(true)
-    // Placeholder: in a real implementation, call an AI endpoint to generate nodes
-    await new Promise(r => setTimeout(r, 800))
+    try {
+      const res = await fetch('/api/flows/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: aiPrompt }),
+      })
+      if (res.ok) {
+        const { nodes: generated } = await res.json()
+        const newConns: Connection[] = []
+        for (const n of generated) {
+          if (n.next_id) newConns.push({ from: n.id, to: n.next_id, port: 'default' })
+          if (n.yes_id)  newConns.push({ from: n.id, to: n.yes_id,  port: 'yes'     })
+          if (n.no_id)   newConns.push({ from: n.id, to: n.no_id,   port: 'no'      })
+        }
+        mutateNodes(() => generated, newConns)
+      }
+    } catch {}
     setAiGenerating(false)
     setAiPrompt('')
   }
@@ -622,6 +722,18 @@ export default function FlowEditorPage() {
 
   return (
     <div className="flex flex-col h-screen bg-[#f4f5f7]">
+
+      {/* Trigger picker modal */}
+      {triggerPickerOpen && (
+        <TriggerPickerModal
+          onSelect={label => {
+            const triggerNode = nodes.find(n => n.type === 'trigger')
+            if (triggerNode) updateNode({ ...triggerNode, trigger_label: label })
+            setTriggerPickerOpen(false)
+          }}
+          onClose={() => setTriggerPickerOpen(false)}
+        />
+      )}
 
       {/* ── Top bar ── */}
       <div className="bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3 flex-shrink-0 z-20">
@@ -740,6 +852,7 @@ export default function FlowEditorPage() {
                   selected={selected === node.id}
                   onSelect={() => { setSelected(node.id); setStepPicker(null) }}
                   onOutputClick={port => handleOutputClick(node.id, port)}
+                  onTriggerClick={node.type === 'trigger' ? () => setTriggerPickerOpen(true) : undefined}
                   onDragStart={e => {
                     if (!canvasRef.current) return
                     const rect = canvasRef.current.getBoundingClientRect()
