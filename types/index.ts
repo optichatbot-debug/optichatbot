@@ -52,6 +52,7 @@ export interface Conversation {
   prescription?: Prescription
   metadata: Record<string, any>
   created_at: string
+  updated_at: string
 }
 
 export interface ChatMessage {
@@ -80,11 +81,13 @@ export interface EyeData {
 export interface Flow {
   id: string
   tenant_id: string
+  name: string
   trigger_keywords: string[]
   steps: FlowStep[]
   active: boolean
   priority: number
   created_at: string
+  updated_at?: string
 }
 
 export interface FlowStep {
