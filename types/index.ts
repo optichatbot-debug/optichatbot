@@ -99,6 +99,35 @@ export interface FlowStep {
   condition?: Record<string, string>
 }
 
+// ─── CONTACT ─────────────────────────────────────────────────────────────────
+export interface Contact {
+  id: string
+  tenant_id: string
+  name: string
+  phone?: string
+  email?: string
+  label: string
+  channel: 'whatsapp' | 'web' | 'instagram' | 'messenger'
+  subscribed: boolean
+  notes?: string
+  metadata: Record<string, unknown>
+  subscribed_at: string
+  created_at: string
+  updated_at: string
+}
+
+// ─── LANDING ─────────────────────────────────────────────────────────────────
+export interface Landing {
+  id: string
+  tenant_id: string
+  name: string
+  prompt: string
+  html_content: string
+  published: boolean
+  created_at: string
+  updated_at: string
+}
+
 // ─── PROMOTION ───────────────────────────────────────────────────────────────
 export interface Promotion {
   id: string

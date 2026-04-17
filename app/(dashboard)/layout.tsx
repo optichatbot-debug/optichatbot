@@ -12,6 +12,7 @@ import {
   HelpCircle,
   UserCircle,
   ChevronDown,
+  Wand2,
 } from 'lucide-react'
 import { OjitoAvatar } from '@/components/chat/OjitoAvatar'
 
@@ -21,6 +22,7 @@ const NAV = [
   { href: '/automatizacion', label: 'Automatización',     Icon: Zap             },
   { href: '/ia',             label: 'IA OptiChatBot',     Icon: Bot             },
   { href: '/bandeja',        label: 'Bandeja de entrada', Icon: MessageSquare   },
+  { href: '/landing',        label: 'Landing IA',         Icon: Wand2           },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
