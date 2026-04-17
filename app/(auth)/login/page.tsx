@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { OjitoAvatar } from '@/components/chat/OjitoAvatar'
 import { supabase } from '@/lib/supabase'
 
@@ -10,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [businessName, setBusinessName] = useState('')
 
@@ -17,31 +17,79 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setInfo('')
 
     if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) setError(error.message)
-      else window.location.href = '/dashboard'
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
+      if (loginError) {
+        setError(loginError.message)
+      } else {
+        window.location.href = '/dashboard'
+        return
+      }
     } else {
-      // Registro: crear usuario auth + tenant
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+      // ── Registro ──────────────────────────────────────────────
+      if (!businessName.trim()) {
+        setError('Por favor ingresa el nombre de tu negocio.')
+        setLoading(false)
+        return
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+      })
+
       if (signUpError) {
+        // Muestra el mensaje real de Supabase para facilitar debug
+        console.error('[signUp error]', signUpError)
         setError(signUpError.message)
         setLoading(false)
         return
       }
 
-      // Crear tenant
-      if (data.user) {
-        const res = await fetch('/api/tenants', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: businessName, email, user_id: data.user.id }),
-        })
-        if (res.ok) window.location.href = '/dashboard'
-        else setError('Error creando tu cuenta. Intenta de nuevo.')
+      // En Supabase v2, signUp puede devolver user sin session
+      // cuando "Email Confirmation" está habilitado en el proyecto.
+      // Creamos el tenant con el user_id del usuario recién creado.
+      const userId = data.user?.id
+      const userEmail = data.user?.email ?? email.trim().toLowerCase()
+
+      if (!userId) {
+        // Caso: email ya registrado pero sin confirmar (identities vacías)
+        setInfo('Este email ya está registrado. Revisa tu bandeja de entrada para confirmar tu cuenta o inicia sesión.')
+        setLoading(false)
+        return
       }
+
+      // Crear tenant en nuestra DB
+      const res = await fetch('/api/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: businessName.trim(),
+          email: userEmail,
+          user_id: userId,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        console.error('[/api/tenants error]', body)
+        setError(body.error ?? 'Error creando tu cuenta. Intenta de nuevo.')
+        setLoading(false)
+        return
+      }
+
+      // Si hay sesión activa (email confirmation desactivado) → directo al dashboard
+      if (data.session) {
+        window.location.href = '/dashboard'
+        return
+      }
+
+      // Si no hay sesión → email de confirmación enviado
+      setInfo('¡Cuenta creada! Revisa tu email y confirma tu cuenta para ingresar.')
     }
+
     setLoading(false)
   }
 
@@ -59,12 +107,13 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Toggle */}
+        {/* Toggle login / registro */}
         <div className="flex bg-gray-100 rounded-lg p-1 mb-6">
           {(['login', 'register'] as const).map(m => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              type="button"
+              onClick={() => { setMode(m); setError(''); setInfo('') }}
               className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
                 mode === m ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
               }`}
@@ -116,9 +165,17 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg border border-red-100">
+            <div className="bg-red-50 text-red-600 text-sm px-3 py-2.5 rounded-lg border border-red-100">
               {error}
+            </div>
+          )}
+
+          {/* Info (email confirmation, etc.) */}
+          {info && (
+            <div className="bg-blue-50 text-blue-700 text-sm px-3 py-2.5 rounded-lg border border-blue-100">
+              {info}
             </div>
           )}
 
@@ -127,7 +184,11 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? 'Cargando...' : mode === 'login' ? 'Ingresar' : 'Crear cuenta'}
+            {loading
+              ? 'Cargando…'
+              : mode === 'login'
+              ? 'Ingresar'
+              : 'Crear cuenta'}
           </button>
         </form>
 
