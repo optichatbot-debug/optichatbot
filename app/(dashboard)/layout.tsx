@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Wand2,
   ShoppingBag,
+  BarChart2,
 } from 'lucide-react'
 
 const NAV = [
@@ -24,6 +25,7 @@ const NAV = [
   { href: '/ia',             label: 'Asistente IA',       Icon: Bot             },
   { href: '/bandeja',        label: 'Bandeja de entrada', Icon: MessageSquare   },
   { href: '/landing',        label: 'Landing IA',         Icon: Wand2           },
+  { href: '/metricas',       label: 'Métricas',           Icon: BarChart2       },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

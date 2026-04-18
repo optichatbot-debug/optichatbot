@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Save, CheckCircle, X, Plus, Trash2, Bot, User, Clock, Tag, Send, Loader2,
-  CreditCard, Package, MessageSquare, Settings, HelpCircle, ChevronDown, ChevronUp,
+  CreditCard, Package, MessageSquare, Settings, HelpCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Tenant } from '@/types'
@@ -39,7 +39,16 @@ interface PaymentMethod {
   name: string
   selected: boolean
   tipo: string
+  nombre_entidad: string
   instructions: string
+}
+
+// CHANGE 3 — FaqItem interface
+interface FaqItem {
+  id: string
+  question: string
+  answer: string
+  category: string
 }
 
 const DAYS: Record<string, string> = {
@@ -54,28 +63,34 @@ const DEFAULT_SCHEDULE: Record<string, DaySchedule> = Object.fromEntries(
   }])
 )
 
+// CHANGE 2 — nombre_entidad added to each entry
 const DEFAULT_PAYMENTS: PaymentMethod[] = [
-  { id: '1', name: 'Yape',          selected: false, tipo: 'billetera virtual',  instructions: '' },
-  { id: '2', name: 'Plin',          selected: false, tipo: 'billetera virtual',  instructions: '' },
-  { id: '3', name: 'Transferencia', selected: false, tipo: 'transferencia',      instructions: '' },
-  { id: '4', name: 'Contraentrega', selected: false, tipo: 'efectivo',           instructions: '' },
-  { id: '5', name: 'Bitcoin',       selected: false, tipo: 'criptomoneda',       instructions: '' },
-  { id: '6', name: 'Depósito',      selected: false, tipo: 'transferencia',      instructions: '' },
-  { id: '7', name: 'Efectivo',      selected: false, tipo: 'efectivo',           instructions: '' },
+  { id: '1', name: 'Yape',          selected: false, tipo: 'billetera virtual',  nombre_entidad: '', instructions: '' },
+  { id: '2', name: 'Plin',          selected: false, tipo: 'billetera virtual',  nombre_entidad: '', instructions: '' },
+  { id: '3', name: 'Transferencia', selected: false, tipo: 'transferencia',      nombre_entidad: '', instructions: '' },
+  { id: '4', name: 'Contraentrega', selected: false, tipo: 'efectivo',           nombre_entidad: '', instructions: '' },
+  { id: '5', name: 'Bitcoin',       selected: false, tipo: 'criptomoneda',       nombre_entidad: '', instructions: '' },
+  { id: '6', name: 'Depósito',      selected: false, tipo: 'transferencia',      nombre_entidad: '', instructions: '' },
+  { id: '7', name: 'Efectivo',      selected: false, tipo: 'efectivo',           nombre_entidad: '', instructions: '' },
 ]
 
+// CHANGE 3 — FAQ categories constant
+const FAQ_CATS = ['Productos', 'Horarios', 'Envíos', 'Pagos', 'Devoluciones', 'Otros']
+
+// CHANGE 3 — new section id:3 "Preguntas Frecuentes"; old ids 3–10 shifted to 4–11
 const SECTIONS = [
-  { id: 0,  label: 'Información básica',   Icon: User        },
-  { id: 1,  label: 'Personalidad',          Icon: Bot         },
-  { id: 2,  label: 'Mensajes',              Icon: MessageSquare },
-  { id: 3,  label: 'Horarios de atención',  Icon: Clock       },
-  { id: 4,  label: 'Promociones',           Icon: Tag         },
-  { id: 5,  label: 'Envíos',                Icon: Package     },
-  { id: 6,  label: 'Pagos',                 Icon: CreditCard  },
-  { id: 7,  label: 'Reclamos',              Icon: HelpCircle  },
-  { id: 8,  label: 'Devoluciones',          Icon: Settings    },
-  { id: 9,  label: 'Otros',                 Icon: Settings    },
-  { id: 10, label: 'Demo del chatbot',       Icon: Bot         },
+  { id: 0,  label: 'Información básica',    Icon: User          },
+  { id: 1,  label: 'Personalidad',           Icon: Bot           },
+  { id: 2,  label: 'Mensajes',               Icon: MessageSquare },
+  { id: 3,  label: 'Preguntas Frecuentes',   Icon: HelpCircle    },
+  { id: 4,  label: 'Horarios de atención',   Icon: Clock         },
+  { id: 5,  label: 'Promociones',            Icon: Tag           },
+  { id: 6,  label: 'Envíos',                 Icon: Package       },
+  { id: 7,  label: 'Pagos',                  Icon: CreditCard    },
+  { id: 8,  label: 'Reclamos',               Icon: HelpCircle    },
+  { id: 9,  label: 'Devoluciones',           Icon: Settings      },
+  { id: 10, label: 'Otros',                  Icon: Settings      },
+  { id: 11, label: 'Demo del chatbot',        Icon: Bot           },
 ]
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -99,15 +114,17 @@ export default function IAPage() {
   const [saved, setSaved]     = useState(false)
   const [activeSection, setActiveSection] = useState(0)
 
-  // Section 1 — Información básica
-  const [sellerName, setSellerName]       = useState('')
-  const [sellerGender, setSellerGender]   = useState<Gender>('Neutro')
-  const [companyName, setCompanyName]     = useState('')
-  const [country, setCountry]             = useState('Perú')
-  const [businessDesc, setBusinessDesc]   = useState('')
-  const [audience, setAudience]           = useState('')
+  // Section 0 — Información básica
+  const [sellerName, setSellerName]             = useState('')
+  const [sellerGender, setSellerGender]         = useState<Gender>('Neutro')
+  const [companyName, setCompanyName]           = useState('')
+  const [country, setCountry]                   = useState('Perú')
+  const [businessDesc, setBusinessDesc]         = useState('')
+  const [audience, setAudience]                 = useState('')
+  // CHANGE 1 — new field
+  const [instruccionesEspeciales, setInstruccionesEspeciales] = useState('')
 
-  // Section 2 — Personalidad
+  // Section 1 — Personalidad
   const [rules, setRules]                         = useState('')
   const [commStyle, setCommStyle]                 = useState('')
   const [salesStyle, setSalesStyle]               = useState('')
@@ -118,14 +135,21 @@ export default function IAPage() {
   const [forbiddenInput, setForbiddenInput]       = useState('')
   const [emojiPalette, setEmojiPalette]           = useState('')
 
-  // Section 3 — Mensajes
+  // Section 2 — Mensajes
   const [welcomeMsg, setWelcomeMsg]     = useState('¡Hola! ¿En qué te puedo ayudar hoy?')
   const [purchaseMsg, setPurchaseMsg]   = useState('¡Gracias por tu compra! En breve recibirás la confirmación de tu pedido.')
   const [handoffMsg, setHandoffMsg]     = useState('Voy a conectarte con un asesor de nuestro equipo. Un momento por favor.')
 
+  // Section 3 — Preguntas Frecuentes (CHANGE 3)
+  const [faqs, setFaqs]                   = useState<FaqItem[]>([])
+  const [faqActiveCat, setFaqActiveCat]   = useState('Todas')
+  const [faqModalCat, setFaqModalCat]     = useState<string | null>(null)
+  const [faqQ, setFaqQ]                   = useState('')
+  const [faqA, setFaqA]                   = useState('')
+
   // Section 4 — Horarios
-  const [alwaysOn, setAlwaysOn]             = useState(true)
-  const [schedule, setSchedule]             = useState<Record<string, DaySchedule>>(DEFAULT_SCHEDULE)
+  const [alwaysOn, setAlwaysOn]               = useState(true)
+  const [schedule, setSchedule]               = useState<Record<string, DaySchedule>>(DEFAULT_SCHEDULE)
   const [outsideHoursMsg, setOutsideHoursMsg] = useState('Nuestro horario de atención ha concluido. Te responderemos a la brevedad.')
 
   function updateDay(day: string, patch: Partial<DaySchedule>) {
@@ -198,6 +222,8 @@ export default function IAPage() {
       setCountry(c.country ?? 'Perú')
       setBusinessDesc(c.business_description ?? '')
       setAudience(c.audience ?? '')
+      // CHANGE 1 — load instrucciones_especiales
+      setInstruccionesEspeciales(c.instrucciones_especiales ?? '')
       setRules(c.ai_rules ?? '')
       setCommStyle(c.communication_style ?? '')
       setSalesStyle(c.sales_style ?? '')
@@ -209,6 +235,8 @@ export default function IAPage() {
       setWelcomeMsg(c.welcome_message ?? '¡Hola! ¿En qué te puedo ayudar hoy?')
       setPurchaseMsg(c.purchase_confirm_message ?? '¡Gracias por tu compra! En breve recibirás la confirmación de tu pedido.')
       setHandoffMsg(c.human_handoff_message ?? 'Voy a conectarte con un asesor de nuestro equipo. Un momento por favor.')
+      // CHANGE 3 — load faqs
+      setFaqs(c.faqs ?? [])
       setAlwaysOn(c.always_on ?? true)
       setSchedule(c.schedule ?? DEFAULT_SCHEDULE)
       setOutsideHoursMsg(c.outside_hours_message ?? 'Nuestro horario de atención ha concluido. Te responderemos a la brevedad.')
@@ -247,6 +275,8 @@ export default function IAPage() {
       country,
       business_description: businessDesc,
       audience,
+      // CHANGE 1 — save instrucciones_especiales
+      instrucciones_especiales: instruccionesEspeciales,
       ai_rules: rules,
       communication_style: commStyle,
       sales_style: salesStyle,
@@ -258,6 +288,8 @@ export default function IAPage() {
       welcome_message: welcomeMsg,
       purchase_confirm_message: purchaseMsg,
       human_handoff_message: handoffMsg,
+      // CHANGE 3 — save faqs
+      faqs,
       always_on: alwaysOn,
       schedule,
       outside_hours_message: outsideHoursMsg,
@@ -338,6 +370,10 @@ export default function IAPage() {
             <Field label="A quién le vendes / Audiencia" wide>
               <textarea value={audience} onChange={e => setAudience(e.target.value)} rows={3} placeholder="Ej: Adultos de 25-55 años que buscan lentes de calidad…" className={`${inp} resize-none`} />
             </Field>
+            {/* CHANGE 1 — Instrucciones especiales field */}
+            <Field label="Instrucciones especiales para tu vendedor" wide>
+              <textarea value={instruccionesEspeciales} onChange={e => setInstruccionesEspeciales(e.target.value)} rows={3} placeholder="Ej: Siempre menciona el tiempo de garantía. No hables de la competencia. Ofrece siempre el plan de financiamiento…" className={`${inp} resize-none`} />
+            </Field>
           </div>
         </div>
       )
@@ -404,7 +440,93 @@ export default function IAPage() {
         </div>
       )
 
-      case 3: return (
+      // CHANGE 3 — new case 3: Preguntas Frecuentes
+      case 3: {
+        const allCats = ['Todas', ...FAQ_CATS]
+        const filteredFaqs = faqActiveCat === 'Todas'
+          ? faqs
+          : faqs.filter(f => f.category === faqActiveCat)
+        const countInCat = faqActiveCat === 'Todas' ? 0 : faqs.filter(f => f.category === faqActiveCat).length
+
+        return (
+          <div className="space-y-4">
+            <h2 className="text-base font-bold text-gray-900 mb-4">Preguntas Frecuentes</h2>
+
+            {/* Sub-tabs */}
+            <div className="flex flex-wrap gap-1.5">
+              {allCats.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFaqActiveCat(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    faqActiveCat === cat
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Add button + count — only visible when a specific category is selected */}
+            {faqActiveCat !== 'Todas' && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">{countInCat}/5 preguntas en esta categoría</span>
+                {countInCat < 5 && (
+                  <button
+                    type="button"
+                    onClick={() => { setFaqQ(''); setFaqA(''); setFaqModalCat(faqActiveCat) }}
+                    className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <Plus size={13} /> Añadir pregunta frecuente
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* FAQ list */}
+            {filteredFaqs.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                <HelpCircle size={28} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">
+                  {faqActiveCat === 'Todas'
+                    ? 'Aún no hay preguntas frecuentes. Selecciona una categoría para comenzar.'
+                    : `Sin preguntas en "${faqActiveCat}". Agrega la primera.`}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredFaqs.map(faq => (
+                  <div key={faq.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 mb-1">{faq.question}</p>
+                        <p className="text-sm text-gray-600 leading-relaxed">{faq.answer}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFaqs(prev => prev.filter(f => f.id !== faq.id))}
+                        className="text-gray-400 hover:text-red-500 flex-shrink-0 mt-0.5"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="mt-2">
+                      <span className="inline-block bg-blue-50 text-blue-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                        {faq.category}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      case 4: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Horarios de atención</h2>
           <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
@@ -438,7 +560,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 4: return (
+      case 5: return (
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-gray-900">Promociones</h2>
@@ -470,7 +592,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 5: return (
+      case 6: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Envíos</h2>
           <div className="grid grid-cols-2 gap-4">
@@ -506,7 +628,8 @@ export default function IAPage() {
         </div>
       )
 
-      case 6: return (
+      // CHANGE 2 — case 7 (was 6): two fields when method is selected
+      case 7: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Métodos de pago</h2>
           <div className="space-y-3">
@@ -525,20 +648,34 @@ export default function IAPage() {
                   )}
                 </div>
                 {m.selected && (
-                  <div className="px-4 pb-3">
-                    <input value={m.instructions} onChange={e => updatePayment(m.id, { instructions: e.target.value })} placeholder={`Instrucciones de pago con ${m.name}…`} className={inp} />
+                  <div className="px-4 pb-3 space-y-2">
+                    {/* CHANGE 2 — nombre_entidad field */}
+                    <input
+                      value={m.nombre_entidad}
+                      onChange={e => updatePayment(m.id, { nombre_entidad: e.target.value })}
+                      placeholder={`Nombre entidad (ej: BCP, Banco X)…`}
+                      className={inp}
+                    />
+                    {/* CHANGE 2 — instructions as textarea */}
+                    <textarea
+                      value={m.instructions}
+                      onChange={e => updatePayment(m.id, { instructions: e.target.value })}
+                      rows={3}
+                      placeholder={`Instrucciones de pago con ${m.name}…`}
+                      className={`${inp} resize-none`}
+                    />
                   </div>
                 )}
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => setPaymentMethods(prev => [...prev, { id: Math.random().toString(36).slice(2), name: 'Nuevo método', selected: true, tipo: 'efectivo', instructions: '' }])} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 text-sm font-medium">
+          <button type="button" onClick={() => setPaymentMethods(prev => [...prev, { id: Math.random().toString(36).slice(2), name: 'Nuevo método', selected: true, tipo: 'efectivo', nombre_entidad: '', instructions: '' }])} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 text-sm font-medium">
             <Plus size={14} /> Agregar método de pago
           </button>
         </div>
       )
 
-      case 7: return (
+      case 8: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Reclamos</h2>
           <Field label="Instrucciones para manejo de reclamos">
@@ -547,7 +684,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 8: return (
+      case 9: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Devoluciones</h2>
           <Field label="Política de devoluciones">
@@ -556,7 +693,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 9: return (
+      case 10: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Información adicional</h2>
           <Field label="Otra información relevante">
@@ -565,7 +702,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 10: return (
+      case 11: return (
         <div className="flex flex-col h-full">
           <h2 className="text-base font-bold text-gray-900 mb-4">Demo del chatbot</h2>
           <p className="text-sm text-gray-500 mb-4">
@@ -676,6 +813,75 @@ export default function IAPage() {
           )}
         </main>
       </div>
+
+      {/* CHANGE 3 — FAQ modal */}
+      {faqModalCat !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900">
+                Añadir pregunta — <span className="text-blue-600">{faqModalCat}</span>
+              </h3>
+              <button type="button" onClick={() => setFaqModalCat(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className={lbl}>Pregunta</label>
+                <input
+                  value={faqQ}
+                  onChange={e => setFaqQ(e.target.value)}
+                  placeholder="¿Cuál es el tiempo de entrega?"
+                  className={inp}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={lbl}>Respuesta</label>
+                <textarea
+                  value={faqA}
+                  onChange={e => setFaqA(e.target.value)}
+                  rows={4}
+                  placeholder="El tiempo de entrega es de 2 a 3 días hábiles…"
+                  className={`${inp} resize-none`}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setFaqModalCat(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!faqQ.trim() || !faqA.trim()}
+                onClick={() => {
+                  if (!faqQ.trim() || !faqA.trim()) return
+                  setFaqs(prev => [
+                    ...prev,
+                    {
+                      id: Math.random().toString(36).slice(2),
+                      question: faqQ.trim(),
+                      answer: faqA.trim(),
+                      category: faqModalCat!,
+                    },
+                  ])
+                  setFaqModalCat(null)
+                  setFaqQ('')
+                  setFaqA('')
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

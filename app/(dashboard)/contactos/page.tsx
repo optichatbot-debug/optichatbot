@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, Plus, Smartphone, Globe, X, Instagram } from 'lucide-react'
+import { Search, Plus, Smartphone, Globe, X, Instagram, ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { Contact } from '@/types'
 
@@ -182,20 +183,21 @@ export default function ContactosPage() {
               <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">Etiqueta</th>
               <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">Estado</th>
               <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">Suscrito</th>
+              <th className="px-4 py-3 w-12" />
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} className="border-b border-gray-50">
-                  <td colSpan={6} className="px-6 py-4">
+                  <td colSpan={7} className="px-6 py-4">
                     <div className="h-6 bg-gray-100 rounded animate-pulse" />
                   </td>
                 </tr>
               ))
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-16 text-center text-gray-400 text-sm">
+                <td colSpan={7} className="px-6 py-16 text-center text-gray-400 text-sm">
                   {contacts.length === 0
                     ? 'Sin contactos aún. Crea el primero con el botón de arriba.'
                     : 'Sin resultados para esta búsqueda.'}
@@ -239,6 +241,11 @@ export default function ContactosPage() {
                   </td>
                   <td className="px-4 py-3.5">
                     <span className="text-sm text-gray-400">{formatDate(c.subscribed_at)}</span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <Link href={`/contactos/${c.id}`} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors inline-flex">
+                      <ExternalLink size={14} />
+                    </Link>
                   </td>
                 </tr>
               ))

@@ -1,29 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { generateLandingHTML } from '@/lib/claude'
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 export async function POST(req: NextRequest) {
   try {
-    const { tenant_id, prompt, name } = await req.json()
+    const { tenant_id, prompt } = await req.json()
 
     if (!tenant_id || !prompt) {
       return NextResponse.json({ error: 'tenant_id y prompt son requeridos' }, { status: 400 })
     }
 
-    // Obtener datos del tenant para personalizar la landing
-    const { data: tenant } = await supabaseAdmin
-      .from('tenants')
-      .select('name, config')
-      .eq('id', tenant_id)
-      .single()
+    const message = await client.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: 'Generate a complete beautiful HTML landing page with inline CSS for: ' + prompt + '. Return ONLY the HTML code starting with <!DOCTYPE html>, nothing else, no markdown, no explanation.',
+      }],
+    })
 
-    const businessName  = tenant?.name ?? 'Mi Óptica'
-    const primaryColor  = tenant?.config?.primary_color ?? '#2563EB'
-
-    // Llamar a Claude para generar el HTML
-    const htmlContent = await generateLandingHTML(prompt, businessName, primaryColor)
-
-    return NextResponse.json({ html: htmlContent })
+    const html = (message.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined)?.text ?? ''
+    return NextResponse.json({ html })
   } catch (error) {
     console.error('[POST /api/landing] error:', error)
     const msg = error instanceof Error ? error.message : 'Error generando landing'

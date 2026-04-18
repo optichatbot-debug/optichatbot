@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Wand2, ExternalLink, Save, Loader2, CheckCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -13,8 +13,6 @@ export default function LandingPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -29,17 +27,6 @@ export default function LandingPage() {
     }
     load()
   }, [])
-
-  // Inject HTML into iframe whenever it changes
-  useEffect(() => {
-    if (!html || !iframeRef.current) return
-    const doc = iframeRef.current.contentDocument
-    if (doc) {
-      doc.open()
-      doc.write(html)
-      doc.close()
-    }
-  }, [html])
 
   async function generate(e: React.FormEvent) {
     e.preventDefault()
@@ -162,7 +149,7 @@ export default function LandingPage() {
             </div>
           ) : html ? (
             <iframe
-              ref={iframeRef}
+              srcDoc={html}
               className="w-full h-full border-0"
               title="Landing preview"
               sandbox="allow-same-origin"
