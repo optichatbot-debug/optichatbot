@@ -25,6 +25,10 @@ export default function ConfiguracionPage() {
   const [waPhone, setWaPhone] = useState('')
   const [waPhoneId, setWaPhoneId] = useState('')
   const [waToken, setWaToken] = useState('')
+  const [wa360Key, setWa360Key] = useState('')
+  const [waOption, setWaOption] = useState<'360dialog' | 'meta' | null>(null)
+  const [wa360Saving, setWa360Saving] = useState(false)
+  const [wa360Saved, setWa360Saved] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -41,8 +45,9 @@ export default function ConfiguracionPage() {
       setTenant(t)
       setBizName(t.name ?? '')
       setWaPhone(t.wa_phone_number ?? '')
-      setWaPhoneId((t as Record<string, unknown>).wa_phone_number_id as string ?? '')
+      setWaPhoneId(t.wa_phone_number_id ?? '')
       setWaToken(t.wa_token ?? '')
+      setWa360Key(t.wa_360dialog_key ?? '')
       setLoading(false)
     }
     load()
@@ -56,9 +61,11 @@ export default function ConfiguracionPage() {
     if (section === 'general') {
       body.name = bizName
     } else if (section === 'canales') {
-      body.wa_phone_number = waPhone
+      body.wa_phone_number    = waPhone
       body.wa_phone_number_id = waPhoneId
-      body.wa_token = waToken
+      body.wa_token           = waToken
+      body.wa_360dialog_key   = wa360Key
+      body.wa_connected       = !!(waToken || wa360Key)
     }
 
     const res = await fetch(`/api/tenants/${tenant.id}`, {
@@ -78,6 +85,18 @@ export default function ConfiguracionPage() {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  async function save360Key() {
+    if (!tenant || !wa360Key.trim() || wa360Saving) return
+    setWa360Saving(true)
+    const res = await fetch(`/api/tenants/${tenant.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wa_360dialog_key: wa360Key.trim(), wa_connected: true }),
+    })
+    if (res.ok) { setWa360Saved(true); setTimeout(() => setWa360Saved(false), 2000) }
+    setWa360Saving(false)
   }
 
   const webhookUrl = tenant
@@ -246,21 +265,92 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
 
-                {/* Channel detail */}
+                {/* Channel detail — WhatsApp */}
                 {vincularOpen && vincularChannel === 'whatsapp' && (
-                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                    <p className="text-sm font-semibold text-green-800 mb-3">Conectar WhatsApp Business</p>
-                    <p className="text-xs text-green-700 mb-3">Inicia sesión con Facebook Business Manager para vincular tu número de WhatsApp.</p>
-                    <button
-                      onClick={() => {
-                        const redirectUri = encodeURIComponent(window.location.origin + '/api/whatsapp/callback')
-                        window.open('https://www.facebook.com/dialog/oauth?client_id=YOUR_APP_ID&redirect_uri=' + redirectUri + '&scope=whatsapp_business_management,whatsapp_business_messaging', '_blank')
-                      }}
-                      className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                      Conectar WhatsApp
-                    </button>
+                  <div className="mt-4 space-y-3">
+                    {/* Connection status */}
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${(wa360Key || waToken) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${(wa360Key || waToken) ? 'bg-green-500' : 'bg-red-500'}`} />
+                        {(wa360Key || waToken) ? 'Conectado' : 'Desconectado'}
+                      </span>
+                    </div>
+
+                    {/* Option selection */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div
+                        onClick={() => setWaOption(o => o === '360dialog' ? null : '360dialog')}
+                        className={`cursor-pointer border-2 rounded-xl p-3 transition-all ${waOption === '360dialog' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                      >
+                        <p className="text-xs font-bold text-gray-800 mb-0.5">Conectar con 360dialog</p>
+                        <p className="text-[11px] text-gray-500">Recomendado · API oficial</p>
+                      </div>
+                      <div
+                        onClick={() => setWaOption(o => o === 'meta' ? null : 'meta')}
+                        className={`cursor-pointer border-2 rounded-xl p-3 transition-all ${waOption === 'meta' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                      >
+                        <p className="text-xs font-bold text-gray-800 mb-0.5">Meta API directa</p>
+                        <p className="text-[11px] text-gray-500">WABA propio · avanzado</p>
+                      </div>
+                    </div>
+
+                    {/* 360dialog flow */}
+                    {waOption === '360dialog' && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                        <p className="text-xs font-semibold text-blue-800">Paso 1: Crea tu cuenta en 360dialog</p>
+                        <button
+                          onClick={() => window.open('https://hub.360dialog.com', '_blank')}
+                          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          Abrir hub.360dialog.com →
+                        </button>
+                        <p className="text-xs font-semibold text-blue-800 mt-2">Paso 2: Pega tu API Key</p>
+                        <div className="flex gap-2">
+                          <input
+                            value={wa360Key}
+                            onChange={e => setWa360Key(e.target.value)}
+                            placeholder="Pega tu API Key de 360dialog aquí"
+                            className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                          />
+                          <button
+                            onClick={save360Key}
+                            disabled={wa360Saving || !wa360Key.trim()}
+                            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            {wa360Saved ? '✓' : wa360Saving ? '…' : 'Guardar'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meta direct flow */}
+                    {waOption === 'meta' && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                        <p className="text-xs font-semibold text-gray-700">Credenciales de Meta Business API</p>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Access Token (WHATSAPP_TOKEN)</label>
+                          <input type="password" value={waToken} onChange={e => setWaToken(e.target.value)} placeholder="EAA…" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Phone Number ID</label>
+                          <input value={waPhoneId} onChange={e => setWaPhoneId(e.target.value)} placeholder="123456789" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Webhook URL */}
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                      <p className="text-xs font-semibold text-gray-600 mb-1.5">URL del Webhook</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs text-gray-700 bg-white border border-gray-200 rounded px-2.5 py-1.5 font-mono truncate">
+                          {webhookUrl}
+                        </code>
+                        <button onClick={() => copy(webhookUrl)} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors">
+                          {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Verify Token: <code className="font-mono text-gray-600">optichatbot-webhook</code></p>
+                    </div>
                   </div>
                 )}
                 {vincularOpen && (vincularChannel === 'instagram' || vincularChannel === 'messenger') && (
@@ -272,72 +362,6 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* WhatsApp */}
-              <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
-                    <Smartphone size={14} className="text-green-600" />
-                  </div>
-                  <h2 className="font-semibold text-gray-900">WhatsApp Business API</h2>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Número de teléfono
-                    </label>
-                    <input
-                      value={waPhone}
-                      onChange={e => setWaPhone(e.target.value)}
-                      placeholder="+51999999999"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Phone Number ID (Meta)
-                    </label>
-                    <input
-                      value={waPhoneId}
-                      onChange={e => setWaPhoneId(e.target.value)}
-                      placeholder="123456789"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Access Token
-                    </label>
-                    <input
-                      type="password"
-                      value={waToken}
-                      onChange={e => setWaToken(e.target.value)}
-                      placeholder="EAA…"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                    <p className="text-xs font-semibold text-gray-600 mb-1.5">
-                      URL del Webhook (configurar en Meta)
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs text-gray-700 bg-white border border-gray-200 rounded px-2.5 py-1.5 font-mono truncate">
-                        {webhookUrl}
-                      </code>
-                      <button
-                        onClick={() => copy(webhookUrl)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
-                      >
-                        {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1.5">
-                      Verify Token: <code className="font-mono text-gray-600">optichatbot-webhook</code>
-                    </p>
-                  </div>
-                </div>
               </div>
 
               {/* Widget web */}

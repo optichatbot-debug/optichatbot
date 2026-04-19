@@ -6,7 +6,10 @@ export interface Tenant {
   plan: 'free' | 'starter' | 'pro' | 'enterprise'
   widget_token: string
   wa_phone_number?: string
+  wa_phone_number_id?: string
   wa_token?: string
+  wa_360dialog_key?: string
+  wa_connected?: boolean
   tone: 'amigable' | 'formal' | 'tecnico'
   avatar_name: string
   config: TenantConfig
@@ -14,14 +17,62 @@ export interface Tenant {
 }
 
 export interface TenantConfig {
-  primary_color?: string      // default: #2563EB
-  secondary_color?: string    // default: #38BDF8
-  welcome_message?: string
-  business_description?: string
+  // Legacy
+  primary_color?: string
+  secondary_color?: string
   business_hours?: string
   logo_url?: string
-  categories?: string[]       // categorías prioritarias
-  checkout_url?: string       // URL de checkout Shopify
+  categories?: string[]
+  checkout_url?: string
+  // Section 0 — Info básica
+  seller_name?: string
+  seller_gender?: string
+  company_name?: string
+  country?: string
+  business_description?: string
+  audience?: string
+  instrucciones_especiales?: string
+  // Section 1 — Personalidad
+  ai_rules?: string
+  communication_style?: string
+  sales_style?: string
+  response_length?: string
+  use_emojis?: boolean
+  use_opening_signs?: boolean
+  forbidden_words?: string[]
+  emoji_palette?: string
+  // Section 2 — Mensajes
+  welcome_message?: string
+  purchase_confirm_message?: string
+  human_handoff_message?: string
+  // Section 3 — FAQs
+  faqs?: Array<{ id: string; question: string; answer: string; category: string }>
+  // Section 4 — Horarios
+  always_on?: boolean
+  schedule?: Record<string, { active: boolean; from: string; to: string }>
+  outside_hours_message?: string
+  // Section 5 — Promociones
+  ai_promotions?: Array<{ id: string; name: string; desc: string; conditions: string; discount: string }>
+  // Section 6 — Envíos
+  shipping?: {
+    zone_name?: string
+    payment_types?: string
+    cash_on_delivery?: boolean
+    partial_payment?: boolean
+    partial_amount?: string
+    zones?: Array<{ id: string; name: string; price: string; desc: string }>
+  }
+  // Section 7 — Pagos
+  payment_methods?: Array<{
+    id: string; name: string; selected: boolean; tipo: string
+    nombre_entidad: string; instructions: string
+  }>
+  // Section 8 — Descuentos
+  discounts?: Array<Record<string, unknown>>
+  // Section 9-11
+  claims_instructions?: string
+  returns_policy?: string
+  other_info?: string
 }
 
 // ─── PRODUCT ──────────────────────────────────────────────────────────────────

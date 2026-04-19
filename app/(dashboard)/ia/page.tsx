@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Save, CheckCircle, X, Plus, Trash2, Bot, User, Clock, Tag, Send, Loader2,
-  CreditCard, Package, MessageSquare, Settings, HelpCircle,
+  CreditCard, Package, MessageSquare, Settings, HelpCircle, Percent, ShoppingBag,
+  Truck, RefreshCw, Calendar, ChevronRight,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Tenant } from '@/types'
@@ -51,6 +52,44 @@ interface FaqItem {
   category: string
 }
 
+interface Discount {
+  id: string
+  type: 'product' | 'buy_x_get_y' | 'order' | 'free_shipping'
+  method: 'code' | 'automatic'
+  code: string
+  valueType: 'percent' | 'fixed'
+  value: string
+  appliesTo: 'all_products' | 'collections' | 'specific_products'
+  eligibility: 'all' | 'segments' | 'specific'
+  minRequirement: 'none' | 'amount' | 'quantity'
+  minValue: string
+  limitTotal: boolean
+  totalLimit: string
+  limitPerCustomer: boolean
+  combineProduct: boolean
+  combineOrder: boolean
+  combineShipping: boolean
+  startDate: string
+  startTime: string
+  hasEndDate: boolean
+  endDate: string
+  endTime: string
+  active: boolean
+  minQty: string
+  freeProduct: string
+  excludedRates: string
+}
+
+const EMPTY_DISCOUNT: Discount = {
+  id: '', type: 'product', method: 'code', code: '', valueType: 'percent', value: '',
+  appliesTo: 'all_products', eligibility: 'all', minRequirement: 'none', minValue: '',
+  limitTotal: false, totalLimit: '', limitPerCustomer: false,
+  combineProduct: false, combineOrder: false, combineShipping: false,
+  startDate: new Date().toISOString().split('T')[0], startTime: '00:00',
+  hasEndDate: false, endDate: '', endTime: '23:59',
+  active: true, minQty: '', freeProduct: '', excludedRates: '',
+}
+
 const DAYS: Record<string, string> = {
   lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles',
   jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo',
@@ -77,7 +116,6 @@ const DEFAULT_PAYMENTS: PaymentMethod[] = [
 // CHANGE 3 — FAQ categories constant
 const FAQ_CATS = ['Productos', 'Horarios', 'Envíos', 'Pagos', 'Devoluciones', 'Otros']
 
-// CHANGE 3 — new section id:3 "Preguntas Frecuentes"; old ids 3–10 shifted to 4–11
 const SECTIONS = [
   { id: 0,  label: 'Información básica',    Icon: User          },
   { id: 1,  label: 'Personalidad',           Icon: Bot           },
@@ -87,10 +125,11 @@ const SECTIONS = [
   { id: 5,  label: 'Promociones',            Icon: Tag           },
   { id: 6,  label: 'Envíos',                 Icon: Package       },
   { id: 7,  label: 'Pagos',                  Icon: CreditCard    },
-  { id: 8,  label: 'Reclamos',               Icon: HelpCircle    },
-  { id: 9,  label: 'Devoluciones',           Icon: Settings      },
-  { id: 10, label: 'Otros',                  Icon: Settings      },
-  { id: 11, label: 'Demo del chatbot',        Icon: Bot           },
+  { id: 8,  label: 'Descuentos',             Icon: Percent       },
+  { id: 9,  label: 'Reclamos',               Icon: HelpCircle    },
+  { id: 10, label: 'Devoluciones',           Icon: RefreshCw     },
+  { id: 11, label: 'Otros',                  Icon: Settings      },
+  { id: 12, label: 'Demo del chatbot',        Icon: Bot           },
 ]
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -188,12 +227,17 @@ export default function IAPage() {
     setPaymentMethods(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m))
   }
 
-  // Section 8-10
+  // Section 8 — Descuentos
+  const [discounts, setDiscounts]                 = useState<Discount[]>([])
+  const [discountTypeModal, setDiscountTypeModal] = useState(false)
+  const [discountForm, setDiscountForm]           = useState<Discount | null>(null)
+
+  // Section 9-11
   const [claimsText, setClaimsText]   = useState('')
   const [returnsText, setReturnsText] = useState('')
   const [otherText, setOtherText]     = useState('')
 
-  // Section 11 — Demo chat
+  // Section 12 — Demo chat
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [chatInput, setChatInput]       = useState('')
   const [chatLoading, setChatLoading]   = useState(false)
@@ -248,6 +292,7 @@ export default function IAPage() {
       setPartialAmount(c.shipping?.partial_amount ?? '')
       setShippingZones(c.shipping?.zones ?? [])
       if (c.payment_methods?.length) setPaymentMethods(c.payment_methods)
+      setDiscounts((c.discounts ?? []) as Discount[])
       setClaimsText(c.claims_instructions ?? '')
       setReturnsText(c.returns_policy ?? '')
       setOtherText(c.other_info ?? '')
@@ -303,6 +348,7 @@ export default function IAPage() {
         zones: shippingZones,
       },
       payment_methods: paymentMethods,
+      discounts,
       claims_instructions: claimsText,
       returns_policy: returnsText,
       other_info: otherText,
@@ -675,7 +721,66 @@ export default function IAPage() {
         </div>
       )
 
-      case 8: return (
+      case 8: {
+        const typeLabels: Record<string, string> = {
+          product: 'Descuento en productos',
+          buy_x_get_y: 'Compra X y obtén Y',
+          order: 'Descuento en el pedido',
+          free_shipping: 'Envío gratis',
+        }
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-gray-900">Descuentos</h2>
+              <button
+                type="button"
+                onClick={() => setDiscountTypeModal(true)}
+                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              >
+                <Plus size={13} /> Crear descuento
+              </button>
+            </div>
+            {discounts.length === 0 ? (
+              <div className="text-center py-12 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                <Percent size={28} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Sin descuentos creados. Crea el primero.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {discounts.map(d => (
+                  <div key={d.id} className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 bg-white">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">
+                        {d.method === 'code' && d.code ? d.code : '(Descuento automático)'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {typeLabels[d.type] || d.type} · {d.valueType === 'percent' ? `${d.value}%` : `S/.${d.value}`} de descuento
+                      </p>
+                    </div>
+                    <Toggle value={d.active} onChange={v => setDiscounts(prev => prev.map(x => x.id === d.id ? { ...x, active: v } : x))} />
+                    <button
+                      type="button"
+                      onClick={() => setDiscountForm(d)}
+                      className="text-gray-400 hover:text-blue-500 transition-colors"
+                    >
+                      <ChevronRight size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscounts(prev => prev.filter(x => x.id !== d.id))}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      case 9: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Reclamos</h2>
           <Field label="Instrucciones para manejo de reclamos">
@@ -684,7 +789,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 9: return (
+      case 10: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Devoluciones</h2>
           <Field label="Política de devoluciones">
@@ -693,7 +798,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 10: return (
+      case 11: return (
         <div className="space-y-4">
           <h2 className="text-base font-bold text-gray-900 mb-4">Información adicional</h2>
           <Field label="Otra información relevante">
@@ -702,7 +807,7 @@ export default function IAPage() {
         </div>
       )
 
-      case 11: return (
+      case 12: return (
         <div className="flex flex-col h-full">
           <h2 className="text-base font-bold text-gray-900 mb-4">Demo del chatbot</h2>
           <p className="text-sm text-gray-500 mb-4">
@@ -877,6 +982,352 @@ export default function IAPage() {
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors"
               >
                 Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Discount type selection modal ── */}
+      {discountTypeModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-sm font-bold text-gray-900">Selecciona el tipo de descuento</h3>
+              <button type="button" onClick={() => setDiscountTypeModal(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { type: 'product',        Icon: Tag,         title: 'Descuento en productos',   desc: 'Aplica descuentos a productos específicos o colecciones' },
+                { type: 'buy_x_get_y',    Icon: ShoppingBag, title: 'Compra X y obtén Y',       desc: 'Regala un producto al comprar cierta cantidad' },
+                { type: 'order',          Icon: Percent,     title: 'Descuento en el pedido',   desc: 'Aplica descuentos al importe total del pedido' },
+                { type: 'free_shipping',  Icon: Truck,       title: 'Envío gratis',             desc: 'Ofrece envío gratis en un pedido' },
+              ] as const).map(({ type, Icon, title, desc }) => (
+                <div
+                  key={type}
+                  onClick={() => {
+                    setDiscountTypeModal(false)
+                    setDiscountForm({ ...EMPTY_DISCOUNT, id: Math.random().toString(36).slice(2), type })
+                  }}
+                  className="cursor-pointer border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-4 transition-all"
+                >
+                  <Icon size={20} className="text-blue-600 mb-2" />
+                  <p className="text-xs font-bold text-gray-800 mb-1">{title}</p>
+                  <p className="text-[11px] text-gray-500 leading-snug">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Discount form modal ── */}
+      {discountForm !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-4">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900">
+                {discountForm.type === 'product' ? 'Descuento en productos' :
+                 discountForm.type === 'buy_x_get_y' ? 'Compra X y obtén Y' :
+                 discountForm.type === 'order' ? 'Descuento en el pedido' : 'Envío gratis'}
+              </h3>
+              <button type="button" onClick={() => setDiscountForm(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+
+            <div className="flex gap-0">
+              {/* Left: form */}
+              <div className="flex-1 p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+
+                {/* Método */}
+                {discountForm.type !== 'free_shipping' && (
+                  <div>
+                    <label className={lbl}>Método</label>
+                    <div className="flex gap-2">
+                      {(['code', 'automatic'] as const).map(m => (
+                        <button key={m} type="button"
+                          onClick={() => setDiscountForm(f => f ? { ...f, method: m } : f)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${discountForm.method === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                        >
+                          {m === 'code' ? 'Código de descuento' : 'Descuento automático'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Code */}
+                {discountForm.method === 'code' && discountForm.type !== 'free_shipping' && (
+                  <div>
+                    <label className={lbl}>Código de descuento</label>
+                    <div className="flex gap-2">
+                      <input
+                        value={discountForm.code}
+                        onChange={e => setDiscountForm(f => f ? { ...f, code: e.target.value.toUpperCase() } : f)}
+                        placeholder="ej: VERANO20"
+                        className={`${inp} flex-1 font-mono uppercase`}
+                      />
+                      <button type="button"
+                        onClick={() => setDiscountForm(f => f ? { ...f, code: Math.random().toString(36).slice(2, 8).toUpperCase() } : f)}
+                        className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 whitespace-nowrap"
+                      >
+                        Generar código
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Value */}
+                {discountForm.type !== 'free_shipping' && discountForm.type !== 'buy_x_get_y' && (
+                  <div>
+                    <label className={lbl}>Valor del descuento</label>
+                    <div className="flex gap-2">
+                      <select value={discountForm.valueType}
+                        onChange={e => setDiscountForm(f => f ? { ...f, valueType: e.target.value as 'percent' | 'fixed' } : f)}
+                        className={`${inp} w-40`}
+                      >
+                        <option value="percent">Porcentaje (%)</option>
+                        <option value="fixed">Monto fijo (S/.)</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                          {discountForm.valueType === 'percent' ? '%' : 'S/.'}
+                        </span>
+                        <input type="number" value={discountForm.value}
+                          onChange={e => setDiscountForm(f => f ? { ...f, value: e.target.value } : f)}
+                          placeholder="0"
+                          className={`${inp} pl-9`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Buy X get Y fields */}
+                {discountForm.type === 'buy_x_get_y' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lbl}>Cantidad mínima a comprar</label>
+                      <input type="number" value={discountForm.minQty}
+                        onChange={e => setDiscountForm(f => f ? { ...f, minQty: e.target.value } : f)}
+                        placeholder="ej: 2"
+                        className={inp}
+                      />
+                    </div>
+                    <div>
+                      <label className={lbl}>Producto gratuito</label>
+                      <input value={discountForm.freeProduct}
+                        onChange={e => setDiscountForm(f => f ? { ...f, freeProduct: e.target.value } : f)}
+                        placeholder="Nombre del producto gratuito"
+                        className={inp}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Se aplica a */}
+                {discountForm.type !== 'free_shipping' && (
+                  <div>
+                    <label className={lbl}>Se aplica a</label>
+                    <select value={discountForm.appliesTo}
+                      onChange={e => setDiscountForm(f => f ? { ...f, appliesTo: e.target.value as Discount['appliesTo'] } : f)}
+                      className={inp}
+                    >
+                      <option value="all_products">Todos los productos</option>
+                      <option value="collections">Colecciones específicas</option>
+                      <option value="specific_products">Productos específicos</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Elegibilidad */}
+                <div>
+                  <label className={lbl}>Elegibilidad del cliente</label>
+                  <div className="space-y-1.5">
+                    {([
+                      { v: 'all',      l: 'Todos los clientes' },
+                      { v: 'segments', l: 'Segmentos específicos' },
+                      { v: 'specific', l: 'Clientes específicos' },
+                    ] as const).map(({ v, l }) => (
+                      <label key={v} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="radio" name="eligibility" checked={discountForm.eligibility === v}
+                          onChange={() => setDiscountForm(f => f ? { ...f, eligibility: v } : f)}
+                        />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Requisitos mínimos */}
+                {discountForm.type !== 'buy_x_get_y' && (
+                  <div>
+                    <label className={lbl}>Requisitos mínimos</label>
+                    <div className="space-y-1.5">
+                      {([
+                        { v: 'none',     l: 'Sin requisitos' },
+                        { v: 'amount',   l: 'Monto mínimo de compra (S/.)' },
+                        { v: 'quantity', l: 'Cantidad mínima de artículos' },
+                      ] as const).map(({ v, l }) => (
+                        <label key={v} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input type="radio" name="minReq" checked={discountForm.minRequirement === v}
+                            onChange={() => setDiscountForm(f => f ? { ...f, minRequirement: v } : f)}
+                          />
+                          {l}
+                        </label>
+                      ))}
+                    </div>
+                    {discountForm.minRequirement !== 'none' && (
+                      <input type="number" value={discountForm.minValue}
+                        onChange={e => setDiscountForm(f => f ? { ...f, minValue: e.target.value } : f)}
+                        placeholder={discountForm.minRequirement === 'amount' ? 'Monto mínimo en S/.' : 'Cantidad mínima'}
+                        className={`${inp} mt-2`}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Envío gratis excluded rates */}
+                {discountForm.type === 'free_shipping' && (
+                  <div>
+                    <label className={lbl}>Tarifas de envío excluidas</label>
+                    <input value={discountForm.excludedRates}
+                      onChange={e => setDiscountForm(f => f ? { ...f, excludedRates: e.target.value } : f)}
+                      placeholder="ej: Express, Internacional"
+                      className={inp}
+                    />
+                  </div>
+                )}
+
+                {/* Usos máximos */}
+                <div>
+                  <label className={lbl}>Usos máximos</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={discountForm.limitTotal}
+                        onChange={e => setDiscountForm(f => f ? { ...f, limitTotal: e.target.checked } : f)}
+                      />
+                      Limitar número total de usos
+                    </label>
+                    {discountForm.limitTotal && (
+                      <input type="number" value={discountForm.totalLimit}
+                        onChange={e => setDiscountForm(f => f ? { ...f, totalLimit: e.target.value } : f)}
+                        placeholder="Número máximo de usos"
+                        className={`${inp} ml-5`}
+                      />
+                    )}
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={discountForm.limitPerCustomer}
+                        onChange={e => setDiscountForm(f => f ? { ...f, limitPerCustomer: e.target.checked } : f)}
+                      />
+                      Limitar a un uso por cliente
+                    </label>
+                  </div>
+                </div>
+
+                {/* Combinaciones */}
+                <div>
+                  <label className={lbl}>Combinaciones</label>
+                  <div className="space-y-2">
+                    {([
+                      { k: 'combineProduct' as const, l: 'Descuentos de producto' },
+                      { k: 'combineOrder'   as const, l: 'Descuentos de pedido' },
+                      { k: 'combineShipping'as const, l: 'Descuentos de envío' },
+                    ]).map(({ k, l }) => (
+                      <label key={k} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={discountForm[k]}
+                          onChange={e => setDiscountForm(f => f ? { ...f, [k]: e.target.checked } : f)}
+                        />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fechas */}
+                <div>
+                  <label className={lbl}><Calendar size={12} className="inline mr-1" />Fecha de inicio</label>
+                  <div className="flex gap-2">
+                    <input type="date" value={discountForm.startDate}
+                      onChange={e => setDiscountForm(f => f ? { ...f, startDate: e.target.value } : f)}
+                      className={`${inp} flex-1`}
+                    />
+                    <input type="time" value={discountForm.startTime}
+                      onChange={e => setDiscountForm(f => f ? { ...f, startTime: e.target.value } : f)}
+                      className={`${inp} w-32`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 cursor-pointer">
+                    <input type="checkbox" checked={discountForm.hasEndDate}
+                      onChange={e => setDiscountForm(f => f ? { ...f, hasEndDate: e.target.checked } : f)}
+                    />
+                    Fecha de fin
+                  </label>
+                  {discountForm.hasEndDate && (
+                    <div className="flex gap-2">
+                      <input type="date" value={discountForm.endDate}
+                        onChange={e => setDiscountForm(f => f ? { ...f, endDate: e.target.value } : f)}
+                        className={`${inp} flex-1`}
+                      />
+                      <input type="time" value={discountForm.endTime}
+                        onChange={e => setDiscountForm(f => f ? { ...f, endTime: e.target.value } : f)}
+                        className={`${inp} w-32`}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: preview */}
+              <div className="w-56 flex-shrink-0 bg-gray-50 border-l border-gray-100 p-5 rounded-r-2xl">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3">Resumen</p>
+                <div className="space-y-2 text-xs text-gray-700">
+                  {discountForm.type !== 'free_shipping' && discountForm.code && (
+                    <div><span className="font-semibold">Código:</span> <code className="font-mono bg-white border border-gray-200 px-1 rounded">{discountForm.code}</code></div>
+                  )}
+                  {discountForm.type !== 'free_shipping' && discountForm.type !== 'buy_x_get_y' && discountForm.value && (
+                    <div><span className="font-semibold">Valor:</span> {discountForm.valueType === 'percent' ? `${discountForm.value}% de descuento` : `S/.${discountForm.value} de descuento`}</div>
+                  )}
+                  {discountForm.type === 'buy_x_get_y' && (
+                    <div><span className="font-semibold">Compra:</span> {discountForm.minQty || '?'} unidades → obtiene {discountForm.freeProduct || '?'} gratis</div>
+                  )}
+                  {discountForm.type === 'free_shipping' && (
+                    <div><span className="font-semibold">Tipo:</span> Envío gratis</div>
+                  )}
+                  <div><span className="font-semibold">Aplica a:</span> {discountForm.appliesTo === 'all_products' ? 'Todos los productos' : discountForm.appliesTo === 'collections' ? 'Colecciones' : 'Productos específicos'}</div>
+                  {discountForm.minRequirement !== 'none' && (
+                    <div><span className="font-semibold">Min:</span> {discountForm.minRequirement === 'amount' ? `S/.${discountForm.minValue}` : `${discountForm.minValue} artículos`}</div>
+                  )}
+                  <div><span className="font-semibold">Inicio:</span> {discountForm.startDate} {discountForm.startTime}</div>
+                  {discountForm.hasEndDate && discountForm.endDate && (
+                    <div><span className="font-semibold">Fin:</span> {discountForm.endDate} {discountForm.endTime}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+              <button type="button" onClick={() => setDiscountForm(null)} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!discountForm) return
+                  const d = { ...discountForm }
+                  if (!d.id) d.id = Math.random().toString(36).slice(2)
+                  setDiscounts(prev => {
+                    const exists = prev.find(x => x.id === d.id)
+                    return exists ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]
+                  })
+                  setDiscountForm(null)
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              >
+                Guardar descuento
               </button>
             </div>
           </div>

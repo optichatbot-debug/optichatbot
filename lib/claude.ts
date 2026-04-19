@@ -5,142 +5,150 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-// ── System Prompt completo para negocio óptico ────────────────────────────────
+// ── System Prompt dinámico usando toda la config del tenant ──────────────────
 
 function getSystemPrompt(
   tenant: Tenant,
   products: Product[],
   promotions: Promotion[],
-  tone: 'amigable' | 'formal' | 'tecnico'
+  _tone: 'amigable' | 'formal' | 'tecnico'
 ): string {
-  const avatarName   = tenant.avatar_name || 'Ojito'
-  const businessName = tenant.name
-  const businessDesc = tenant.config?.business_description || 'una óptica especializada'
-  const checkoutUrl  = tenant.config?.checkout_url || ''
-  const businessHours = tenant.config?.business_hours || 'Lunes a Viernes 9am–7pm, Sábados 9am–2pm'
+  const c = tenant.config ?? {}
 
+  // Identity
+  const sellerName     = c.seller_name     || tenant.avatar_name || 'Asistente'
+  const sellerGender   = c.seller_gender   || 'Neutro'
+  const companyName    = c.company_name    || tenant.name        || 'esta empresa'
+  const country        = c.country         || 'Latinoamérica'
+  const companyDesc    = c.business_description || ''
+  const audience       = c.audience        || ''
+  const instrEspeciales = c.instrucciones_especiales || ''
+
+  // Personality
+  const aiRules      = c.ai_rules              || ''
+  const commStyle    = c.communication_style   || ''
+  const salesStyle   = c.sales_style           || ''
+  const respLen      = c.response_length       || 'equilibrado'
+  const useEmojis    = c.use_emojis !== false
+  const useSigns     = c.use_opening_signs     || false
+  const forbidden    = (c.forbidden_words      || []) as string[]
+  const emojiPalette = c.emoji_palette         || ''
+
+  // Messages
+  const handoffMsg = c.human_handoff_message || 'Voy a conectarte con un asesor de nuestro equipo. Un momento por favor.'
+
+  // Business hours
+  const alwaysOn = c.always_on !== false
+  const schedule  = (c.schedule || {}) as Record<string, { active?: boolean; from?: string; to?: string }>
+  const outHrsMsg = c.outside_hours_message || ''
+
+  // Products
   const productList = products.length > 0
-    ? products.map(p =>
-        `• ${p.name} | Cat: ${p.category} | Precio: S/.${p.price} | ${p.description}`
-      ).join('\n')
+    ? products.map(p => `• ${p.name} | Cat: ${p.category} | Precio: S/.${p.price}${p.description ? ` | ${p.description}` : ''}`).join('\n')
     : 'No hay productos cargados en el catálogo aún.'
 
-  const promoList = promotions.length > 0
-    ? promotions.map(p => {
-        const disc = p.discount_type === 'pct'
-          ? `${p.discount_value}% descuento`
-          : `S/.${p.discount_value} de descuento`
-        return `• ${p.name} (${p.category}): ${disc} — "${p.message}"`
-      }).join('\n')
-    : 'Sin promociones activas en este momento.'
+  // Promotions (from DB + from config)
+  type CfgPromo = { name?: string; discount?: string; desc?: string; conditions?: string }
+  const cfgPromos = (c.ai_promotions || []) as CfgPromo[]
+  const promoLines: string[] = [
+    ...promotions.map(p => {
+      const d = p.discount_type === 'pct' ? `${p.discount_value}% de descuento` : `S/.${p.discount_value} de descuento`
+      return `• ${p.name}${p.category ? ` (${p.category})` : ''}: ${d}${p.message ? ` — "${p.message}"` : ''}`
+    }),
+    ...cfgPromos.filter(p => p.name).map(p =>
+      `• ${p.name}${p.discount ? `: ${p.discount}` : ''}${p.desc ? ` — ${p.desc}` : ''}${p.conditions ? ` (activar cuando: ${p.conditions})` : ''}`
+    ),
+  ]
+  const promoList = promoLines.length > 0 ? promoLines.join('\n') : 'Sin promociones activas en este momento.'
 
-  const toneInstructions: Record<string, string> = {
-    amigable: `TONO: Amigable y cercano.
-• Lenguaje casual pero profesional, cálido y empático
-• Usa emojis con moderación (máx. 2 por mensaje)
-• Tutéa al cliente: "tú", "te", "tu"
-• Saludo: "¡Hola! 😊", "¡Qué gusto saludarte!"`,
-
-    formal: `TONO: Formal y profesional.
-• Lenguaje cuidado y respetuoso, sin emojis
-• Trata al cliente de "usted"
-• Saludo: "Buenos días.", "Con mucho gusto le atiendo."
-• Evita contracciones y expresiones coloquiales`,
-
-    tecnico: `TONO: Técnico especializado en óptica.
-• Usa terminología: Rx, OD, OI, esfera (Esf), cilindro (Cil), eje, adición (Add), DNP, altura de montaje
-• Trata al cliente de "usted"
-• Saludo: "Le atiendo. ¿Cuál es su requerimiento óptico?"
-• Sé preciso con unidades y rangos clínicos`,
+  // Business hours summary
+  let hoursText = 'Disponible 24/7'
+  if (!alwaysOn) {
+    const activeHours = Object.entries(schedule)
+      .filter(([, d]) => d.active)
+      .map(([name, d]) => `${name}: ${d.from || '09:00'}–${d.to || '18:00'}`)
+    hoursText = activeHours.length > 0 ? activeHours.join(', ') : 'Ver horario configurado'
   }
 
-  return `Eres ${avatarName}, el asistente virtual con IA de ${businessName}.
-${businessDesc}.
-Fuiste creado por OptiChatBot — la plataforma de IA para negocios ópticos.
-Respondes SIEMPRE en español latinoamericano. Nunca menciones que eres Claude ni Anthropic.
+  // Payment methods
+  type CfgPay = { selected?: boolean; name?: string; tipo?: string; nombre_entidad?: string; instructions?: string }
+  const payMethods = ((c.payment_methods || []) as CfgPay[]).filter(m => m.selected)
+  const payLines = payMethods.map(m => {
+    let line = `• ${m.name || ''}${m.tipo ? ` (${m.tipo})` : ''}`
+    if (m.nombre_entidad) line += ` — ${m.nombre_entidad}`
+    if (m.instructions) line += `\n  Instrucciones: ${m.instructions}`
+    return line
+  })
+  const payText = payLines.length > 0 ? payLines.join('\n') : 'Los métodos de pago serán indicados por el equipo.'
 
-${toneInstructions[tone]}
+  // Shipping
+  type CfgShip = { zone_name?: string; payment_types?: string; cash_on_delivery?: boolean; partial_payment?: boolean; partial_amount?: string; zones?: Array<{ name?: string; price?: string; desc?: string }> }
+  const ship = (c.shipping || {}) as CfgShip
+  const shipLines: string[] = []
+  if (ship.zone_name) shipLines.push(`Zona: ${ship.zone_name}`)
+  if (ship.payment_types) shipLines.push(`Tipos de pago: ${ship.payment_types}`)
+  if (ship.cash_on_delivery) shipLines.push('Acepta contraentrega')
+  if (ship.partial_payment && ship.partial_amount) shipLines.push(`Pago parcial mínimo: ${ship.partial_amount}`)
+  if (Array.isArray(ship.zones)) {
+    ship.zones.forEach(z => { if (z.name) shipLines.push(`  "${z.name}": ${z.price || '?'}${z.desc ? ` — ${z.desc}` : ''}`) })
+  }
+
+  // FAQs
+  type CfgFaq = { question?: string; answer?: string }
+  const faqs = (c.faqs || []) as CfgFaq[]
+  const faqText = faqs.length > 0
+    ? faqs.map(f => `P: ${f.question}\nR: ${f.answer}`).join('\n\n')
+    : ''
+
+  // Response length instruction
+  const lenMap: Record<string, string> = {
+    muy_conciso: '1-2 oraciones máximo',
+    conciso: '2-3 oraciones',
+    equilibrado: '3-4 oraciones o bullets cortos',
+    detallado: 'respuestas completas con contexto',
+    muy_detallado: 'respuestas muy completas y detalladas',
+  }
+
+  const genderNote = sellerGender === 'Femenino' ? ' (femenino)' : sellerGender === 'Masculino' ? ' (masculino)' : ''
+
+  return `Eres ${sellerName}${genderNote}, asistente virtual de ventas de ${companyName} (${country}).
+${companyDesc ? companyDesc + '\n' : ''}${audience ? `Clientes objetivo: ${audience}\n` : ''}
+IDENTIDAD: Nunca menciones Claude, Anthropic u otra IA. Siempre eres ${sellerName} de ${companyName}. Responde SIEMPRE en español latinoamericano.
 
 ══════════════════════════════════════════════════
 CATÁLOGO DE PRODUCTOS:
 ${productList}
-══════════════════════════════════════════════════
 
 PROMOCIONES ACTIVAS:
 ${promoList}
 
-HORARIO DE ATENCIÓN: ${businessHours}
-LINK DE COMPRA: ${checkoutUrl || '(el negocio configurará su enlace de pago)'}
+MÉTODOS DE PAGO:
+${payText}
+
+HORARIO: ${hoursText}${!alwaysOn && outHrsMsg ? `\nFuera de horario: "${outHrsMsg}"` : ''}
+${shipLines.length > 0 ? '\nENVÍOS:\n' + shipLines.join('\n') : ''}
+${faqText ? '\nPREGUNTAS FRECUENTES:\n' + faqText : ''}
+${c.claims_instructions ? '\nMANEJO DE RECLAMOS:\n' + c.claims_instructions : ''}
+${c.returns_policy ? '\nDEVOLUCIONES:\n' + c.returns_policy : ''}
+${c.other_info ? '\nINFORMACIÓN ADICIONAL:\n' + c.other_info : ''}
 ══════════════════════════════════════════════════
 
-TUS CAPACIDADES COMPLETAS:
+PERSONALIDAD:
+${commStyle ? '• Estilo de comunicación: ' + commStyle : ''}
+${salesStyle ? '• Estilo de ventas: ' + salesStyle : ''}
+${aiRules ? '• Reglas: ' + aiRules : ''}
+${instrEspeciales ? '• Instrucciones especiales: ' + instrEspeciales : ''}
 
-1. RECOMENDAR PRODUCTOS
-   • Sugiere armazones por tipo de rostro:
-     - Ovalado → cualquier forma le queda
-     - Redondo → marcos rectangulares o angulares
-     - Cuadrado → marcos redondos u ovalados, sin ángulos duros
-     - Corazón (frente ancha) → aviador, cat-eye, sin adornos en la parte superior
-     - Alargado → marcos grandes, wraparound, gruesos
-   • Considera uso: sol, computadora, lectura, deporte, moda
-   • Considera presupuesto del cliente
-   • Siempre menciona precio y características clave
-   • NUNCA inventes productos fuera del catálogo
+FORMATO:
+• Longitud: ${lenMap[respLen] || '3-4 oraciones'}
+• Emojis: ${useEmojis ? `Sí, con moderación${emojiPalette ? ` (paleta: ${emojiPalette})` : ' (máx. 2 por mensaje)'}` : 'NO uses emojis'}
+• Signos de apertura ¡¿: ${useSigns ? 'Sí' : 'No'}
+${forbidden.length > 0 ? '• NUNCA uses: ' + forbidden.join(', ') : ''}
 
-2. CAPTURAR PRESCRIPCIÓN ÓPTICA
-   Cuando el cliente quiere lentes con medida, pide TODOS estos datos:
-   • Ojo Derecho (OD): Esfera (Esf), Cilindro (Cil), Eje
-   • Ojo Izquierdo (OI): Esfera (Esf), Cilindro (Cil), Eje
-   • Adición (Add) — solo para bifocal o progresivo
-   • DNP (distancia naso-pupilar) — si la tienen disponible
-   • Altura de montaje — si es progresivo
-   Valida rangos clínicos: Esf entre -20.00 y +20.00, Cil entre -8.00 y +8.00, Eje entre 0° y 180°.
-   Si los valores parecen incorrectos, pregunta amablemente que confirmen la receta.
-
-3. COTIZAR TRATAMIENTOS DE LUNA
-   Puedes mencionar y cotizar estas opciones de tratamiento:
-   • Antirreflejo (AR): reduce reflejos y cansa menos la vista
-   • Fotocromático: oscurece automáticamente con la luz solar
-   • Blue Cut (filtro azul): protege de pantallas digitales
-   • Endurecido: mayor resistencia a rayones
-   • Polarizado: elimina reflejos horizontales (ideal deportivo/sol)
-   • Hidrofóbico: repelente al agua y suciedad
-   • Progresivo: corrección multifocal sin línea visible
-   Cuando el cliente tenga presbicia o adición, recomienda progresivo premium.
-
-4. AGENDAR CITAS Y CONSULTAS
-   Cuando el cliente quiere agendar, preguntar:
-   • Nombre completo
-   • Teléfono de contacto
-   • Tipo de consulta: examen de vista, adaptación de lentes de contacto, control, otro
-   • Fecha y hora preferida (según horario de atención)
-   Confirma los datos y di que el equipo confirmará la cita.
-
-5. INFORMAR SOBRE ENVÍOS Y RETIRO EN TIENDA
-   • Pregunta si prefieren envío a domicilio o retiro en tienda
-   • Para envío: pedir dirección completa, ciudad, referencia
-   • Informar tiempos estimados si el negocio los configuró
-   • Para retiro: dar dirección de la tienda y horario
-
-6. CERRAR LA VENTA CON PROMOCIONES
-   • Aplica promos activas de forma natural según la categoría
-   • Cuando el cliente esté listo para comprar, guíalo al checkout:
-     "${checkoutUrl ? `👉 ${checkoutUrl}` : 'el link de pago está disponible en nuestra tienda'}"
-   • Si no hay checkout configurado, di que el equipo tomará el pedido
-   • Usa urgencia suave: "Esta promo es por tiempo limitado 🎯"
-
-7. RESPONDER PREGUNTAS DEL CATÁLOGO
-   • Precios, disponibilidad, colores, tallas de armazón
-   • Comparaciones entre productos
-   • Tiempo de elaboración de lentes con medida (típico: 3-7 días hábiles)
-   • Garantía y política de cambios
-
-REGLAS CRÍTICAS:
-• Respuestas máximo 4-5 oraciones. Si necesitas más, usa bullet points cortos.
-• Si no sabes algo, di: "Para eso te conecto con nuestro equipo humano 👨‍💼"
-• Nunca diagnostiques condiciones médicas oculares
-• Si detectas urgencia médica (dolor ocular, pérdida de visión), deriva inmediatamente a un oftalmólogo
-• Siempre sé proactivo: al final de cada respuesta agrega una pregunta o sugerencia que avance la venta`
+INSTRUCCIONES:
+• Recomienda solo productos del catálogo. NUNCA inventes productos ni precios.
+• Al final de cada respuesta agrega una pregunta o sugerencia que avance la conversación.
+• Si no puedes resolver algo, di: "${handoffMsg}"`
 }
 
 // ── Chat principal ────────────────────────────────────────────────────────────
