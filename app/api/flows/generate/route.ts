@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
@@ -10,13 +10,13 @@ export async function POST(req: NextRequest) {
     const { description } = await req.json()
     if (!description) return NextResponse.json({ error: 'description requerida' }, { status: 400 })
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: 'You are a chatbot flow builder. Generate WhatsApp automation flows as JSON. Return ONLY valid JSON, no markdown, no explanation.',
-      messages: [{
-        role: 'user',
-        content: `Generate a WhatsApp automation flow for: "${description}"
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: 'You are a chatbot flow builder. Generate WhatsApp automation flows as JSON. Return ONLY valid JSON, no markdown, no explanation.',
+    })
+
+    const result = await model.generateContent(
+      `Generate a WhatsApp automation flow for: "${description}"
 
 Return ONLY this JSON structure (no markdown, no code blocks):
 {
@@ -37,11 +37,10 @@ Rules:
 - For condition: add "condition_text" describing the condition
 - For tag_contact: add "tag" field
 - Create 3-6 meaningful nodes that actually help automate the described process
-- Use natural conversational Spanish in messages`,
-      }],
-    })
+- Use natural conversational Spanish in messages`
+    )
 
-    const text = response.content.find(b => b.type === 'text')?.text ?? ''
+    const text = result.response.text()
 
     // Extract JSON from response (handle both raw JSON and code blocks)
     let jsonStr = text.trim()

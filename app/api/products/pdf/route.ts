@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,24 +21,15 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer()
     const base64 = Buffer.from(bytes).toString('base64')
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: base64,
-              },
-            } as any,
-            {
-              type: 'text',
-              text: `Extrae todos los productos de este catálogo/documento.
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          data: base64,
+          mimeType: 'application/pdf',
+        },
+      },
+      `Extrae todos los productos de este catálogo/documento.
 Para cada producto devuelve un JSON array con este formato exacto:
 [
   {
@@ -51,19 +42,16 @@ Para cada producto devuelve un JSON array con este formato exacto:
 ]
 Solo responde con el JSON array, sin markdown, sin texto adicional.
 Si no encuentras productos, responde con []`,
-            },
-          ],
-        },
-      ],
-    })
+    ])
 
-    const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]'
+    const raw = result.response.text().trim()
 
     let products: Array<{ name: string; category: string; price: number; description: string; sku?: string }>
     try {
-      products = JSON.parse(raw)
+      const jsonMatch = raw.match(/\[[\s\S]*\]/)
+      products = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
     } catch {
-      return NextResponse.json({ error: 'No se pudo parsear la respuesta de Claude', raw }, { status: 500 })
+      return NextResponse.json({ error: 'No se pudo parsear la respuesta de Gemini', raw }, { status: 500 })
     }
 
     if (!Array.isArray(products) || products.length === 0) {
@@ -91,7 +79,8 @@ Si no encuentras productos, responde con []`,
     }
 
     return NextResponse.json({ inserted: data?.length ?? 0, products: data })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? 'Error interno' }, { status: 500 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error interno'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
