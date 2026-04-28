@@ -149,6 +149,8 @@ INSTRUCCIONES:
 • Si no puedes resolver algo, di: "${handoffMsg}"`
 }
 
+const DEFAULT_SYSTEM_PROMPT = `Eres un asistente virtual de ventas de una óptica. Ayudas a los clientes con información sobre productos ópticos, lentes, armazones y servicios. Responde siempre en español latinoamericano de forma amable y profesional.`
+
 // ── Chat principal ────────────────────────────────────────────────────────────
 
 export async function chatWithOjito(params: {
@@ -159,10 +161,18 @@ export async function chatWithOjito(params: {
   promotions: Promotion[]
   tone?: 'amigable' | 'formal' | 'tecnico'
 }): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) {
+    return 'API key no configurada. Contacta al administrador.'
+  }
+
   const { message, history, tenant, products, promotions } = params
   const tone = params.tone || tenant.tone || 'amigable'
 
-  const systemPrompt = getSystemPrompt(tenant, products, promotions, tone)
+  const hasConfig = tenant.config && Object.keys(tenant.config).length > 0
+  const systemPrompt = hasConfig
+    ? getSystemPrompt(tenant, products, promotions, tone)
+    : DEFAULT_SYSTEM_PROMPT
+
   const recentHistory = history.slice(-20)
 
   try {
@@ -174,7 +184,8 @@ export async function chatWithOjito(params: {
       })),
     })
     const result = await chat.sendMessage(message)
-    return result.response.text()
+    const text = result.response.text()
+    return text || 'Lo siento, no pude generar una respuesta. Por favor intenta de nuevo.'
   } catch (error: unknown) {
     console.error('Error Gemini API:', error)
     const e = error as { status?: number; message?: string }

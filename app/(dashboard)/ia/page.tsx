@@ -374,12 +374,21 @@ export default function IAPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, session_id: demoSessionId.current, tenant_token: tenant.widget_token }),
+        body: JSON.stringify({
+          message: msg,
+          session_id: demoSessionId.current,
+          tenant_token: tenant.widget_token,
+          tone_override: tenant.tone || 'amigable',
+        }),
       })
       const data = await res.json()
-      setChatMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? 'Sin respuesta del asistente.' }])
-    } catch {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Error al conectar con el asistente.' }])
+      if (!res.ok) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `Error ${res.status}: ${data.error ?? res.statusText}` }])
+      } else {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? data.error ?? 'Sin respuesta del asistente.' }])
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `Error al conectar: ${err instanceof Error ? err.message : 'Error desconocido'}` }])
     }
     setChatLoading(false)
   }
