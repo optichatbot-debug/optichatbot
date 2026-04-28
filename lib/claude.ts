@@ -1,9 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { Tenant, Product, Promotion } from '@/types'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-})
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 // ── System Prompt dinámico usando toda la config del tenant ──────────────────
 
@@ -113,7 +111,7 @@ function getSystemPrompt(
 
   return `Eres ${sellerName}${genderNote}, asistente virtual de ventas de ${companyName} (${country}).
 ${companyDesc ? companyDesc + '\n' : ''}${audience ? `Clientes objetivo: ${audience}\n` : ''}
-IDENTIDAD: Nunca menciones Claude, Anthropic u otra IA. Siempre eres ${sellerName} de ${companyName}. Responde SIEMPRE en español latinoamericano.
+IDENTIDAD: Nunca menciones Gemini, Google u otra IA. Siempre eres ${sellerName} de ${companyName}. Responde SIEMPRE en español latinoamericano.
 
 ══════════════════════════════════════════════════
 CATÁLOGO DE PRODUCTOS:
@@ -167,25 +165,20 @@ export async function chatWithOjito(params: {
   const systemPrompt = getSystemPrompt(tenant, products, promotions, tone)
   const recentHistory = history.slice(-20)
 
-  const messages: Anthropic.MessageParam[] = [
-    ...recentHistory.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    { role: 'user', content: message },
-  ]
-
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 700,
-      system: systemPrompt,
-      messages,
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: systemPrompt })
+    const chat = model.startChat({
+      history: recentHistory.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
     })
-
-    const textBlock = response.content.find(b => b.type === 'text')
-    return textBlock ? textBlock.text : 'Lo siento, hubo un error. Por favor intenta de nuevo.'
+    const result = await chat.sendMessage(message)
+    return result.response.text()
   } catch (error: unknown) {
-    console.error('Error Claude API:', error)
-    const e = error as { status?: number }
-    if (e?.status === 401) return 'Error de configuración del asistente. Contacta al soporte.'
+    console.error('Error Gemini API:', error)
+    const e = error as { status?: number; message?: string }
+    if (e?.status === 401 || e?.message?.includes('API_KEY')) return 'Error de configuración del asistente. Contacta al soporte.'
     if (e?.status === 429) return 'El asistente está muy ocupado ahora mismo. Intenta en unos segundos.'
     return 'Lo siento, tuve un problema procesando tu mensaje. ¿Puedes intentarlo de nuevo?'
   }
@@ -231,17 +224,12 @@ ESTILO:
 SOLO devuelve el HTML completo. Sin explicaciones, sin markdown, sin bloques de código. Solo el HTML empezando con <!DOCTYPE html>.`
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
-      messages: [{ role: 'user', content: prompt }],
-    })
-
-    const textBlock = response.content.find(b => b.type === 'text')
-    return textBlock?.text ?? '<html><body><h1>Error generando la landing</h1></body></html>'
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const result = await model.generateContent(prompt)
+    return result.response.text() || '<html><body><h1>Error generando la landing</h1></body></html>'
   } catch (error) {
     console.error('Error generando landing:', error)
-    throw new Error('No se pudo generar la landing. Verifica tu API key de Claude.')
+    throw new Error('No se pudo generar la landing. Verifica tu API key de Gemini.')
   }
 }
 

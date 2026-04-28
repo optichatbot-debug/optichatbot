@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,16 +12,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'tenant_id y prompt son requeridos' }, { status: 400 })
     }
 
-    const message = await client.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: 'Generate a complete beautiful HTML landing page with inline CSS for: ' + prompt + '. Return ONLY the HTML code starting with <!DOCTYPE html>, nothing else, no markdown, no explanation.',
-      }],
-    })
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const result = await model.generateContent('Generate a complete beautiful modern HTML landing page with inline CSS and JS for: ' + prompt + '. Return ONLY the HTML code starting with <!DOCTYPE html>, nothing else.')
+    const html = result.response.text()
 
-    const html = (message.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined)?.text ?? ''
     return NextResponse.json({ html })
   } catch (error) {
     console.error('[POST /api/landing] error:', error)
